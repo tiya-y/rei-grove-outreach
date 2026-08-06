@@ -72,7 +72,7 @@ export type ActivationChannelKey = (typeof ACTIVATION_CHANNELS)[number]['key'];
 
 // Automatic disqualifiers — never pursue these regardless of score.
 // Mirrors the partnership-prospector skill's blocklist. Kept here as the code
-// default; app_settings.competitor_blocklist in Supabase can extend this list
+// default; app_settings.competitor_blocklist in the database can extend this list
 // without a redeploy.
 export const DEFAULT_COMPETITOR_BLOCKLIST = [
   // Direct Ledgre competitors (rental accounting/bookkeeping) — never pursue

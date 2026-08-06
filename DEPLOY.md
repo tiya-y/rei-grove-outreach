@@ -1,13 +1,12 @@
 # Deployment Guide — REI Grove Outreach
 
-## Step 1 — Supabase
+## Step 1 — Neon
 
-1. Go to [supabase.com](https://supabase.com) → New Project. Name it `rei-grove-outreach`.
-2. In **SQL Editor** → New query → paste the contents of `supabase/schema.sql` → Run.
-3. Go to **Settings → API** and copy:
-   - `Project URL` → `NEXT_PUBLIC_SUPABASE_URL`
-   - `anon public` key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `service_role` key → `SUPABASE_SERVICE_ROLE_KEY`
+1. Go to [neon.tech](https://neon.tech) → New Project. Name it `rei-grove-outreach`.
+2. Open the project's **SQL Editor** → New query → paste the contents of `db/schema.sql` → Run.
+   (Or run it via `psql "$DATABASE_URL" -f db/schema.sql` from your machine.)
+3. Go to **Dashboard → Connection Details**, select the **pooled connection** (recommended for
+   serverless), and copy the full connection string → `DATABASE_URL`.
 
 ## Step 2 — Anthropic (Claude)
 
@@ -66,7 +65,10 @@ mailbox sync running on a tighter schedule than Vercel's own cron allows.
    - Method: `POST`
    - URL: `https://YOUR-VERCEL-URL.vercel.app/api/webhooks/n8n/prospects`
    - Header: `x-n8n-secret: <the secret from step 1>`
-   - Body (JSON): `{"prospects": [{"name": "...", "prospect_type": "creator", "website": "...", "email": "...", "category": "newsletter", "audience_size_est": 8000, "content_presence": "...", "source_ref": "n8n: newsletter-sweep-workflow"}]}`
+   - Body (JSON): `{"batchLabel": "n8n: newsletter-sweep-workflow", "prospects": [{"name": "...", "prospect_type": "creator", "website": "...", "email": "...", "category": "newsletter", "audience_size_est": 8000, "content_presence": "...", "source_ref": "..."}]}`
+   - Every call that creates at least one prospect shows up as one batch under **History** —
+     `batchLabel` (and/or `source_ref`) at the top level names that batch; each prospect's own
+     `source_ref` is separate, per-prospect metadata.
 3. **Mailbox sync workflow**: a **Schedule Trigger** (every 10-15 min is reasonable) → **HTTP Request** node:
    - Method: `POST`
    - URL: `https://YOUR-VERCEL-URL.vercel.app/api/graph/sync`
@@ -91,9 +93,7 @@ In Vercel → Project Settings → **Environment Variables**, add every key from
 
 | Variable | Value |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | From Supabase |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | From Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | From Supabase |
+| `DATABASE_URL` | Pooled connection string from Neon |
 | `ANTHROPIC_API_KEY` | From Anthropic Console |
 | `MS365_CLIENT_ID` | From Azure app registration |
 | `MS365_CLIENT_SECRET` | From Azure app registration |
@@ -114,13 +114,14 @@ Deploy. Vercel builds automatically on every push to `main`.
 
 ## Step 8 — First prospects
 
-1. **Add prospect** manually, or let an n8n discovery workflow populate the pipeline via the webhook from
-   Step 5.
+1. On **Prospect Search**, click **+ Add prospect** manually, or let an n8n discovery workflow populate
+   the pipeline via the webhook from Step 5 (each bulk import shows up under **History**).
 2. Open a prospect → **Score this prospect** → paste research notes and click "Ask Claude to suggest
-   scores" (or just fill in the rubric yourself) → **Save score**.
-3. **Compose outreach** → pick an activation channel → **Generate draft with Claude** → review/edit →
-   **Send via connected Outlook inbox**.
-4. Replies show up under **Email thread** on the prospect's page after the next sync.
+   scores" (or just fill in the rubric yourself) → **Save score** → **Approve for outreach**.
+3. The prospect now appears on the **Outreach** tab. Open it → **Compose outreach** → pick an activation
+   channel → **Generate draft with Claude** → review/edit → **Send via connected Outlook inbox**.
+4. Replies show up under **Email thread** on the prospect's page after the next sync, and every thread
+   is listed under **History → Communications**.
 
 ## Local development
 

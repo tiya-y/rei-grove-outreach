@@ -23,20 +23,17 @@ export default function Dashboard() {
   useEffect(() => {
     if (!data?.prospects) return;
     const sorted = [...data.prospects]
-      .filter((p) => !p.disqualified)
+      .filter((p) => !p.disqualified && (p.stage === 'new' || p.stage === 'researched'))
       .sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
       .slice(0, 8);
     setTopProspects(sorted);
   }, [data]);
 
   const prospects = data?.prospects ?? [];
-  const counts = {
-    total: prospects.length,
-    new: prospects.filter((p) => p.stage === 'new').length,
-    reached_out: prospects.filter((p) => p.stage === 'reached_out').length,
-    replied: prospects.filter((p) => p.stage === 'replied').length,
-    in_discussion: prospects.filter((p) => p.stage === 'in_discussion').length,
-    live: prospects.filter((p) => p.stage === 'partner_live' || p.stage === 'affiliate_active').length,
+  const stats = {
+    found: prospects.length,
+    reachedOut: prospects.filter((p) => p.last_contacted_at != null).length,
+    signedUp: prospects.filter((p) => p.stage === 'partner_live' || p.stage === 'affiliate_active').length,
   };
 
   return (
@@ -46,26 +43,23 @@ export default function Dashboard() {
         <p className="text-sm text-gray-500">Cold outreach for REI Grove partnership, affiliate, and creator prospects.</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-6">
-        <StatCard label="Total prospects" value={counts.total} />
-        <StatCard label="New" value={counts.new} />
-        <StatCard label="Reached out" value={counts.reached_out} />
-        <StatCard label="Replied" value={counts.replied} />
-        <StatCard label="In discussion" value={counts.in_discussion} />
-        <StatCard label="Live" value={counts.live} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard label="Prospects found" value={stats.found} />
+        <StatCard label="Reached out to" value={stats.reachedOut} />
+        <StatCard label="Signed up" value={stats.signedUp} />
       </div>
 
       <div className="card">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-semibold text-gray-900">Top-scored prospects</h2>
-          <Link href="/prospects" className="text-sm text-grove-dark hover:underline">
-            View all →
+          <Link href="/search" className="text-sm text-grove-dark hover:underline">
+            Go to Prospect Search →
           </Link>
         </div>
         {loading && <p className="text-sm text-gray-400">Loading…</p>}
         {!loading && topProspects.length === 0 && (
           <p className="text-sm text-gray-400">
-            No scored prospects yet. <Link href="/prospects/new" className="underline">Add one</Link> or connect an n8n discovery workflow (see Settings).
+            No scored prospects waiting for review. <Link href="/search/new" className="underline">Add one</Link> or connect an n8n discovery workflow (see Settings).
           </p>
         )}
         <div className="divide-y">

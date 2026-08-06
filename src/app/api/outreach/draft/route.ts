@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase';
+import { sql } from '@/lib/db';
 import { generateOutreachEmail } from '@/lib/claude';
 
 // POST /api/outreach/draft — generate copy without sending or saving.
 // Body: { prospectId, offerType?, sequenceStep? }
 export async function POST(req: NextRequest) {
-  const db = createServiceClient();
   const body = await req.json();
   if (!body.prospectId) return NextResponse.json({ error: 'prospectId is required' }, { status: 400 });
 
-  const { data: prospect, error } = await db.from('prospects').select('*').eq('id', body.prospectId).single();
-  if (error || !prospect) return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
+  let prospect;
+  try {
+    [prospect] = await sql`select * from prospects where id = ${body.prospectId}`;
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Query failed' }, { status: 500 });
+  }
+  if (!prospect) return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
 
   if (prospect.disqualified) {
     return NextResponse.json({ error: `This prospect is disqualified (${prospect.disqualify_reason}). Remove the disqualification before drafting outreach.` }, { status: 400 });

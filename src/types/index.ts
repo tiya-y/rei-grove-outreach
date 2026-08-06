@@ -3,6 +3,7 @@ export type ProspectType = 'partner' | 'creator' | 'affiliate';
 export type ProspectStage =
   | 'new'
   | 'researched'
+  | 'approved'
   | 'reached_out'
   | 'replied'
   | 'in_discussion'
@@ -14,6 +15,7 @@ export type ProspectStage =
 export const PROSPECT_STAGES: { key: ProspectStage; label: string }[] = [
   { key: 'new', label: 'New' },
   { key: 'researched', label: 'Researched' },
+  { key: 'approved', label: 'Approved' },
   { key: 'reached_out', label: 'Reached Out' },
   { key: 'replied', label: 'Replied' },
   { key: 'in_discussion', label: 'In Discussion' },
@@ -22,6 +24,22 @@ export const PROSPECT_STAGES: { key: ProspectStage; label: string }[] = [
   { key: 'stalled', label: 'Stalled' },
   { key: 'pass', label: 'Pass' },
 ];
+
+// Stages that mean "this prospect has been approved for outreach" — used to
+// split the pipeline between the Prospect Search pool and the Outreach pool.
+export const OUTREACH_STAGES: ProspectStage[] = [
+  'approved',
+  'reached_out',
+  'replied',
+  'in_discussion',
+  'partner_live',
+  'affiliate_active',
+  'stalled',
+];
+
+export function isOutreachStage(stage: ProspectStage): boolean {
+  return (OUTREACH_STAGES as string[]).includes(stage);
+}
 
 export interface ScoreBreakdownEntry {
   key: string;
@@ -58,6 +76,7 @@ export interface Prospect {
   organic_traffic_est: number | null;
   source: 'manual' | 'n8n' | 'ahrefs';
   source_ref: string | null;
+  batch_id: string | null;
   score: number | null;
   score_breakdown: ScoreBreakdown | Record<string, never>;
   disqualified: boolean;
@@ -110,15 +129,17 @@ export interface MailboxConnection {
   updated_at: string;
 }
 
-export interface PipelineStats {
-  total: number;
-  new: number;
-  researched: number;
+export interface ProspectBatch {
+  id: string;
+  source: 'n8n' | 'csv';
+  label: string | null;
+  source_ref: string | null;
+  created_at: string;
+  prospect_count: number;
+}
+
+export interface DashboardStats {
+  found: number;
   reached_out: number;
-  replied: number;
-  in_discussion: number;
-  partner_live: number;
-  affiliate_active: number;
-  stalled: number;
-  pass: number;
+  signed_up: number;
 }

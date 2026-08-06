@@ -1,9 +1,22 @@
 -- ============================================================
--- REI Grove Cold Outreach — Supabase Schema
--- Run this in your Supabase SQL editor (Project -> SQL Editor -> New query)
+-- REI Grove Cold Outreach — Neon (Postgres) Schema
+-- Run this in your Neon project's SQL editor (or via psql against the
+-- connection string in DATABASE_URL).
 -- ============================================================
 
 create extension if not exists "pgcrypto";
+
+-- ============================================================
+-- PROSPECT BATCHES — one row per bulk-import event (n8n webhook today).
+-- Manually-added single prospects do NOT get a batch row.
+-- ============================================================
+create table if not exists prospect_batches (
+  id                  uuid primary key default gen_random_uuid(),
+  source              text not null default 'n8n',   -- n8n | csv (future)
+  label               text,                           -- human label, e.g. "n8n: newsletter-sweep-workflow"
+  source_ref          text,                            -- workflow name/run id, free text
+  created_at          timestamptz default now()
+);
 
 -- ============================================================
 -- PROSPECTS — partnership targets, affiliates, and creators
@@ -37,6 +50,7 @@ create table if not exists prospects (
   -- Source
   source              text default 'manual',   -- manual | n8n | ahrefs
   source_ref          text,                    -- e.g. n8n workflow name/run id, or search query that surfaced them
+  batch_id            uuid references prospect_batches(id) on delete set null,
 
   -- Scoring
   score               numeric,                 -- normalized 0-100
@@ -46,7 +60,7 @@ create table if not exists prospects (
 
   -- Pipeline
   stage               text not null default 'new',
-    -- new | researched | reached_out | replied | in_discussion | partner_live | affiliate_active | stalled | pass
+    -- new | researched | approved | reached_out | replied | in_discussion | partner_live | affiliate_active | stalled | pass
 
   notes               text,
 
@@ -59,6 +73,7 @@ create table if not exists prospects (
 create index if not exists prospects_stage_idx on prospects(stage);
 create index if not exists prospects_email_idx on prospects(email);
 create index if not exists prospects_type_idx on prospects(prospect_type);
+create index if not exists prospects_batch_id_idx on prospects(batch_id);
 create unique index if not exists prospects_name_website_idx on prospects (lower(name), lower(coalesce(website, '')));
 
 -- ============================================================
@@ -134,7 +149,7 @@ insert into app_settings (id) values (1) on conflict (id) do nothing;
 create table if not exists activity_log (
   id                  uuid primary key default gen_random_uuid(),
   prospect_id         uuid references prospects(id) on delete cascade,
-  event_type          text not null,   -- stage_change | note | scored | disqualified | email_sent | email_received | sync_error
+  event_type          text not null,   -- stage_change | note | scored | disqualified | approved | email_sent | email_received | sync_error
   detail              text,
   created_at          timestamptz default now()
 );
@@ -161,17 +176,9 @@ create trigger update_mailbox_connections_updated_at
   for each row execute function update_updated_at_column();
 
 -- ============================================================
--- Row Level Security (open for the service role / internal team for now —
--- tighten with per-user policies once you add multi-user auth)
+-- Access control: this app talks to Neon only from server-side code
+-- (API routes) using DATABASE_URL, which is a server-only secret and is
+-- never sent to the browser. There is no anon/browser DB client and no
+-- per-row security layer here — same trust model as the service-role key
+-- had under Supabase, just without an RLS layer to configure.
 -- ============================================================
-alter table prospects enable row level security;
-alter table messages enable row level security;
-alter table mailbox_connections enable row level security;
-alter table app_settings enable row level security;
-alter table activity_log enable row level security;
-
-create policy "authenticated users full access" on prospects for all using (true);
-create policy "authenticated users full access" on messages for all using (true);
-create policy "authenticated users full access" on mailbox_connections for all using (true);
-create policy "authenticated users full access" on app_settings for all using (true);
-create policy "authenticated users full access" on activity_log for all using (true);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase';
+import { sql } from '@/lib/db';
 import { getDomainMetrics, isAhrefsEnabled } from '@/lib/ahrefs';
 
 // POST /api/ahrefs/lookup — Body: { prospectId }
@@ -11,22 +11,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Ahrefs is not configured (AHREFS_API_KEY missing). This step is optional — score manually instead.' }, { status: 400 });
   }
 
-  const db = createServiceClient();
   const { prospectId } = await req.json();
-  const { data: prospect, error } = await db.from('prospects').select('id,website').eq('id', prospectId).single();
-  if (error || !prospect) return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
+  let prospect;
+  try {
+    [prospect] = await sql`select id, website from prospects where id = ${prospectId}`;
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Query failed' }, { status: 500 });
+  }
+  if (!prospect) return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
   if (!prospect.website) return NextResponse.json({ error: 'Prospect has no website on file' }, { status: 400 });
 
   const domain = prospect.website.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
   const [metrics] = await getDomainMetrics([domain]);
 
-  const { data: updated, error: updateErr } = await db
-    .from('prospects')
-    .update({ domain_rating: metrics.domainRating, organic_traffic_est: metrics.organicTraffic })
-    .eq('id', prospectId)
-    .select()
-    .single();
-
-  if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
-  return NextResponse.json({ prospect: updated, metrics });
+  try {
+    const [updated] = await sql`
+      update prospects set domain_rating = ${metrics.domainRating}, organic_traffic_est = ${metrics.organicTraffic}
+      where id = ${prospectId}
+      returning *
+    `;
+    return NextResponse.json({ prospect: updated, metrics });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Update failed' }, { status: 500 });
+  }
 }

@@ -3,6 +3,7 @@ import { PROSPECT_STAGES, type ProspectStage } from '@/types';
 const STAGE_STYLES: Record<ProspectStage, string> = {
   new: 'bg-gray-100 text-gray-700',
   researched: 'bg-indigo-100 text-indigo-700',
+  approved: 'bg-teal-100 text-teal-700',
   reached_out: 'bg-blue-100 text-blue-700',
   replied: 'bg-purple-100 text-purple-700',
   in_discussion: 'bg-amber-100 text-amber-800',

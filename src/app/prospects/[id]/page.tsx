@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import useSWRLike from '@/lib/useSWRLike';
 import type { Prospect, Message } from '@/types';
-import { PROSPECT_STAGES } from '@/types';
+import { PROSPECT_STAGES, isOutreachStage } from '@/types';
 import StageBadge from '@/components/StageBadge';
 import ScoreBadge from '@/components/ScoreBadge';
 import ScoringPanel from '@/components/ScoringPanel';
@@ -67,7 +67,7 @@ export default function ProspectDetailPage() {
     const res = await fetch(`/api/prospects/${prospect.id}`, { method: 'DELETE' });
     if (res.ok) {
       toast.success('Deleted');
-      router.push('/prospects');
+      router.push('/search');
     }
   }
 
@@ -151,8 +151,31 @@ export default function ProspectDetailPage() {
         </div>
 
         <div className="col-span-2 space-y-6">
-          <ScoringPanel prospect={prospect} onScored={() => refresh()} />
-          <OutreachComposer prospect={prospect} onSent={() => refresh()} />
+          {isOutreachStage(prospect.stage) ? (
+            <OutreachComposer prospect={prospect} onSent={() => refresh()} />
+          ) : (
+            <>
+              <ScoringPanel prospect={prospect} onScored={() => refresh()} />
+              <div className="card space-y-2">
+                <h2 className="font-semibold text-gray-900">Approve for outreach</h2>
+                <p className="text-sm text-gray-500">
+                  Once this prospect is scored and qualified, approve it to move it into the Outreach pipeline where you can draft and send.
+                </p>
+                {(prospect.disqualified || !prospect.email) && (
+                  <p className="text-xs text-red-600">
+                    {prospect.disqualified ? `Blocked — disqualified (${prospect.disqualify_reason}).` : 'Blocked — no email address on file.'}
+                  </p>
+                )}
+                <button
+                  className="btn-primary"
+                  disabled={prospect.disqualified || !prospect.email}
+                  onClick={() => updateProspect({ stage: 'approved' })}
+                >
+                  Approve for outreach
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

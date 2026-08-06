@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exchangeCodeForTokens, getMyProfile } from '@/lib/ms365';
-import { createServiceClient } from '@/lib/supabase';
+import { sql } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -19,20 +19,17 @@ export async function GET(req: NextRequest) {
     const tokens = await exchangeCodeForTokens(code);
     const profile = await getMyProfile(tokens.access_token);
 
-    const db = createServiceClient();
     // Deactivate any previous connection, then insert the fresh one — keeps
     // history around in the table but "active" always points to the mailbox
     // currently authorized to send/read.
-    await db.from('mailbox_connections').update({ is_active: false }).eq('is_active', true);
-    await db.from('mailbox_connections').insert({
-      label: 'Primary outreach inbox',
-      email: profile.mail ?? profile.userPrincipalName,
-      ms365_user_id: profile.id,
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      token_expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
-      is_active: true,
-    });
+    await sql`update mailbox_connections set is_active = false where is_active = true`;
+    await sql`
+      insert into mailbox_connections (label, email, ms365_user_id, access_token, refresh_token, token_expires_at, is_active)
+      values (
+        'Primary outreach inbox', ${profile.mail ?? profile.userPrincipalName}, ${profile.id},
+        ${tokens.access_token}, ${tokens.refresh_token}, ${new Date(Date.now() + tokens.expires_in * 1000).toISOString()}, true
+      )
+    `;
 
     return NextResponse.redirect(`${appUrl}/settings?connected=1`);
   } catch (err) {

@@ -5,9 +5,9 @@ import { usePathname } from 'next/navigation';
 
 const LINKS = [
   { href: '/', label: 'Dashboard' },
-  { href: '/prospects', label: 'Prospects' },
-  { href: '/prospects/new', label: 'Add Prospect' },
-  { href: '/settings', label: 'Settings' },
+  { href: '/search', label: 'Prospect Search' },
+  { href: '/outreach', label: 'Outreach' },
+  { href: '/history', label: 'History' },
 ];
 
 export default function Navigation() {
@@ -20,7 +20,7 @@ export default function Navigation() {
           <span className="text-lg font-semibold text-grove-dark">REI Grove</span>
           <span className="text-sm text-gray-400">Outreach</span>
         </div>
-        <div className="flex gap-4 text-sm">
+        <div className="flex items-center gap-4 text-sm">
           {LINKS.map((link) => {
             const active = pathname === link.href;
             return (
@@ -33,6 +33,9 @@ export default function Navigation() {
               </Link>
             );
           })}
+          <Link href="/settings" className="ml-2 text-xs text-gray-400 hover:text-grove-dark">
+            Settings
+          </Link>
         </div>
       </div>
     </nav>

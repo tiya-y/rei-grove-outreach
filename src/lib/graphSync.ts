@@ -12,7 +12,7 @@
 // flips the prospect's stage to "replied".
 // ============================================================
 
-import { createServiceClient } from './supabase';
+import { sql } from './db';
 import { refreshAccessToken, listRecentMessages, type GraphMessage } from './ms365';
 import { classifyReply } from './claude';
 
@@ -30,15 +30,11 @@ async function getValidAccessToken(connection: {
   if (!connection.refresh_token) throw new Error('No refresh token on file — reconnect Outlook in Settings.');
 
   const refreshed = await refreshAccessToken(connection.refresh_token);
-  const db = createServiceClient();
-  await db
-    .from('mailbox_connections')
-    .update({
-      access_token: refreshed.access_token,
-      refresh_token: refreshed.refresh_token,
-      token_expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
-    })
-    .eq('id', connection.id);
+  await sql`
+    update mailbox_connections
+    set access_token = ${refreshed.access_token}, refresh_token = ${refreshed.refresh_token}, token_expires_at = ${new Date(Date.now() + refreshed.expires_in * 1000).toISOString()}
+    where id = ${connection.id}
+  `;
 
   return refreshed.access_token;
 }
@@ -57,16 +53,11 @@ export interface SyncResult {
 }
 
 export async function syncMailbox(): Promise<SyncResult> {
-  const db = createServiceClient();
   const errors: string[] = [];
 
-  const { data: connection } = await db
-    .from('mailbox_connections')
-    .select('*')
-    .eq('is_active', true)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const [connection] = await sql`
+    select * from mailbox_connections where is_active = true order by created_at desc limit 1
+  `;
 
   if (!connection) {
     return { connectionEmail: null, messagesScanned: 0, newMessages: 0, matchedProspects: 0, errors: ['No active mailbox connection. Connect Outlook in Settings first.'] };
@@ -74,7 +65,12 @@ export async function syncMailbox(): Promise<SyncResult> {
 
   let accessToken: string;
   try {
-    accessToken = await getValidAccessToken(connection);
+    accessToken = await getValidAccessToken(connection as {
+      id: string;
+      access_token: string | null;
+      refresh_token: string | null;
+      token_expires_at: string | null;
+    });
   } catch (err) {
     return {
       connectionEmail: connection.email,
@@ -93,8 +89,8 @@ export async function syncMailbox(): Promise<SyncResult> {
     errors.push(err instanceof Error ? err.message : 'Failed to list messages from Graph');
   }
 
-  const { data: prospects } = await db.from('prospects').select('id,name,email,stage').not('email', 'is', null);
-  const prospectByEmail = new Map((prospects ?? []).map((p) => [p.email!.toLowerCase(), p]));
+  const prospects = await sql`select id, name, email, stage from prospects where email is not null`;
+  const prospectByEmail = new Map((prospects ?? []).map((p) => [(p.email as string).toLowerCase(), p]));
 
   let newMessages = 0;
   const matchedProspectIds = new Set<string>();
@@ -107,7 +103,7 @@ export async function syncMailbox(): Promise<SyncResult> {
     const prospect = prospectByEmail.get(counterpartAddress);
     if (!prospect) continue; // not someone we're tracking
 
-    const { data: existing } = await db.from('messages').select('id').eq('ms_message_id', msg.id).maybeSingle();
+    const [existing] = await sql`select id from messages where ms_message_id = ${msg.id}`;
     if (existing) continue;
 
     const bodyText = msg.body?.content ?? msg.bodyPreview ?? '';
@@ -127,37 +123,40 @@ export async function syncMailbox(): Promise<SyncResult> {
       }
     }
 
-    await db.from('messages').insert({
-      prospect_id: prospect.id,
-      direction,
-      subject: msg.subject,
-      body_html: msg.body?.contentType === 'html' ? msg.body.content : null,
-      body_text: msg.body?.contentType === 'text' ? msg.body.content : bodyText,
-      status: direction === 'inbound' ? 'replied' : 'sent',
-      ms_message_id: msg.id,
-      ms_conversation_id: msg.conversationId,
-      from_address: msg.from?.emailAddress?.address ?? null,
-      to_address: msg.toRecipients?.[0]?.emailAddress?.address ?? null,
-      ai_classification: aiClassification,
-      ai_confidence: aiConfidence,
-      ai_suggested_response: aiSuggested,
-      sent_at: direction === 'outbound' ? msg.sentDateTime : null,
-      received_at: direction === 'inbound' ? msg.receivedDateTime : null,
-    });
+    await sql`
+      insert into messages (
+        prospect_id, direction, subject, body_html, body_text, status,
+        ms_message_id, ms_conversation_id, from_address, to_address,
+        ai_classification, ai_confidence, ai_suggested_response, sent_at, received_at
+      ) values (
+        ${prospect.id}, ${direction}, ${msg.subject ?? null},
+        ${msg.body?.contentType === 'html' ? msg.body.content : null},
+        ${msg.body?.contentType === 'text' ? msg.body.content : bodyText},
+        ${direction === 'inbound' ? 'replied' : 'sent'},
+        ${msg.id}, ${msg.conversationId ?? null},
+        ${msg.from?.emailAddress?.address ?? null}, ${msg.toRecipients?.[0]?.emailAddress?.address ?? null},
+        ${aiClassification}, ${aiConfidence}, ${aiSuggested},
+        ${direction === 'outbound' ? msg.sentDateTime ?? null : null},
+        ${direction === 'inbound' ? msg.receivedDateTime ?? null : null}
+      )
+    `;
 
     newMessages += 1;
-    matchedProspectIds.add(prospect.id);
+    matchedProspectIds.add(prospect.id as string);
 
     if (direction === 'inbound') {
-      await db
-        .from('prospects')
-        .update({ stage: 'replied', last_reply_at: msg.receivedDateTime ?? new Date().toISOString() })
-        .eq('id', prospect.id);
-      await db.from('activity_log').insert({ prospect_id: prospect.id, event_type: 'email_received', detail: `Reply synced from Outlook: "${msg.subject}"` });
+      await sql`
+        update prospects set stage = 'replied', last_reply_at = ${msg.receivedDateTime ?? new Date().toISOString()}
+        where id = ${prospect.id}
+      `;
+      await sql`
+        insert into activity_log (prospect_id, event_type, detail)
+        values (${prospect.id}, 'email_received', ${`Reply synced from Outlook: "${msg.subject}"`})
+      `;
     }
   }
 
-  await db.from('mailbox_connections').update({ last_synced_at: new Date().toISOString() }).eq('id', connection.id);
+  await sql`update mailbox_connections set last_synced_at = ${new Date().toISOString()} where id = ${connection.id}`;
 
   return {
     connectionEmail: connection.email,

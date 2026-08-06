@@ -1,71 +1,70 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase';
+import { sql } from '@/lib/db';
 import { checkDisqualifiers } from '@/lib/scoring';
 
 // GET /api/prospects?stage=reached_out&type=creator — list, newest first
 export async function GET(req: NextRequest) {
-  const db = createServiceClient();
   const { searchParams } = new URL(req.url);
   const stage = searchParams.get('stage');
   const type = searchParams.get('type');
 
-  let query = db.from('prospects').select('*').order('created_at', { ascending: false });
-  if (stage) query = query.eq('stage', stage);
-  if (type) query = query.eq('prospect_type', type);
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (stage) {
+    params.push(stage);
+    conditions.push(`stage = $${params.length}`);
+  }
+  if (type) {
+    params.push(type);
+    conditions.push(`prospect_type = $${params.length}`);
+  }
+  const where = conditions.length ? `where ${conditions.join(' and ')}` : '';
 
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ prospects: data });
+  try {
+    const prospects = await sql.query(`select * from prospects ${where} order by created_at desc`, params);
+    return NextResponse.json({ prospects });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Query failed' }, { status: 500 });
+  }
 }
 
 // POST /api/prospects — manual add (also used by the "New Prospect" form).
 // Runs the automatic disqualifier check from partnership-prospector on every
-// new prospect, regardless of source.
+// new prospect, regardless of source. Manually-added prospects never get a
+// batch_id — batches are only created by bulk imports (see webhooks/n8n).
 export async function POST(req: NextRequest) {
-  const db = createServiceClient();
   const body = await req.json();
 
   if (!body.name) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 });
   }
 
-  const { data: settings } = await db.from('app_settings').select('competitor_blocklist').eq('id', 1).maybeSingle();
-  const extraBlocklist = (settings?.competitor_blocklist ?? []) as { name: string; reason: string }[];
-  const dq = checkDisqualifiers({ name: body.name, website: body.website }, extraBlocklist);
+  try {
+    const [settings] = await sql`select competitor_blocklist from app_settings where id = 1`;
+    const extraBlocklist = (settings?.competitor_blocklist ?? []) as { name: string; reason: string }[];
+    const dq = checkDisqualifiers({ name: body.name, website: body.website }, extraBlocklist);
+    const stage = dq.disqualified ? 'pass' : (body.stage ?? 'new');
 
-  const { data, error } = await db
-    .from('prospects')
-    .insert({
-      prospect_type: body.prospect_type ?? 'partner',
-      name: body.name,
-      contact_first_name: body.contact_first_name ?? null,
-      contact_last_name: body.contact_last_name ?? null,
-      contact_title: body.contact_title ?? null,
-      email: body.email ?? null,
-      website: body.website ?? null,
-      linkedin_url: body.linkedin_url ?? null,
-      category: body.category ?? null,
-      city: body.city ?? null,
-      state: body.state ?? null,
-      audience_size_est: body.audience_size_est ?? null,
-      content_presence: body.content_presence ?? null,
-      source: body.source ?? 'manual',
-      source_ref: body.source_ref ?? null,
-      disqualified: dq.disqualified,
-      disqualify_reason: dq.reason ?? null,
-      stage: dq.disqualified ? 'pass' : (body.stage ?? 'new'),
-      notes: body.notes ?? null,
-    })
-    .select()
-    .single();
+    const [prospect] = await sql`
+      insert into prospects (
+        prospect_type, name, contact_first_name, contact_last_name, contact_title,
+        email, website, linkedin_url, category, city, state, audience_size_est,
+        content_presence, source, source_ref, disqualified, disqualify_reason, stage, notes
+      ) values (
+        ${body.prospect_type ?? 'partner'}, ${body.name}, ${body.contact_first_name ?? null}, ${body.contact_last_name ?? null}, ${body.contact_title ?? null},
+        ${body.email ?? null}, ${body.website ?? null}, ${body.linkedin_url ?? null}, ${body.category ?? null}, ${body.city ?? null}, ${body.state ?? null}, ${body.audience_size_est ?? null},
+        ${body.content_presence ?? null}, ${body.source ?? 'manual'}, ${body.source_ref ?? null}, ${dq.disqualified}, ${dq.reason ?? null}, ${stage}, ${body.notes ?? null}
+      )
+      returning *
+    `;
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    await sql`
+      insert into activity_log (prospect_id, event_type, detail)
+      values (${prospect.id}, ${dq.disqualified ? 'disqualified' : 'note'}, ${dq.disqualified ? `Auto-disqualified on creation: ${dq.reason}` : `Added via ${body.source ?? 'manual'}`})
+    `;
 
-  await db.from('activity_log').insert({
-    prospect_id: data.id,
-    event_type: dq.disqualified ? 'disqualified' : 'note',
-    detail: dq.disqualified ? `Auto-disqualified on creation: ${dq.reason}` : `Added via ${body.source ?? 'manual'}`,
-  });
-
-  return NextResponse.json({ prospect: data, disqualifier: dq }, { status: 201 });
+    return NextResponse.json({ prospect, disqualifier: dq }, { status: 201 });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Insert failed' }, { status: 500 });
+  }
 }

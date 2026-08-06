@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase';
+import { sql } from '@/lib/db';
 import { computeScore, type ScoreDimensionInput, type ProspectType, type CreatorChannel } from '@/lib/scoring';
 import { suggestScore } from '@/lib/claude';
 
@@ -11,13 +11,17 @@ import { suggestScore } from '@/lib/claude';
 //   -> asks Claude to suggest dimension points from free-text research notes;
 //      returns the suggestion WITHOUT saving, so the team can review/edit first.
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const db = createServiceClient();
   const { searchParams } = new URL(req.url);
   const assist = searchParams.get('assist') === '1';
   const body = await req.json();
 
-  const { data: prospect, error: fetchErr } = await db.from('prospects').select('*').eq('id', params.id).single();
-  if (fetchErr || !prospect) return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
+  let prospect;
+  try {
+    [prospect] = await sql`select * from prospects where id = ${params.id}`;
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Query failed' }, { status: 500 });
+  }
+  if (!prospect) return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
 
   const prospectType = prospect.prospect_type as ProspectType;
   const channel = (body.channel ?? prospect.category ?? null) as CreatorChannel | null;
@@ -44,20 +48,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const dimensions = (body.dimensions ?? []) as ScoreDimensionInput[];
   const result = computeScore(prospectType, channel, dimensions);
 
-  const { data, error } = await db
-    .from('prospects')
-    .update({ score: result.total, score_breakdown: result })
-    .eq('id', params.id)
-    .select()
-    .single();
+  try {
+    const [updated] = await sql`
+      update prospects set score = ${result.total}, score_breakdown = ${JSON.stringify(result)}
+      where id = ${params.id}
+      returning *
+    `;
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    await sql`
+      insert into activity_log (prospect_id, event_type, detail)
+      values (${params.id}, 'scored', ${`Score set to ${result.total} (${result.tier})`})
+    `;
 
-  await db.from('activity_log').insert({
-    prospect_id: params.id,
-    event_type: 'scored',
-    detail: `Score set to ${result.total} (${result.tier})`,
-  });
-
-  return NextResponse.json({ prospect: data, score: result });
+    return NextResponse.json({ prospect: updated, score: result });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Save failed' }, { status: 500 });
+  }
 }
