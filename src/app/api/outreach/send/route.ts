@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
-import { sendMailViaGraph, refreshAccessToken } from '@/lib/ms365';
+import { getActiveMailboxConnection, getValidAccessTokenForConnection, sendAndRecordOutreach } from '@/lib/outreachSend';
 
 // POST /api/outreach/send — actually sends via the connected Outlook mailbox
-// and logs the message + advances the prospect's stage to "reached_out".
+// and logs the message. Advances the prospect's stage to "reached_out" only
+// if this is the initial send (stage was "approved"); a manual reply sent
+// from a later stage like "replied" leaves the stage as-is.
 // Body: { prospectId, subject, body (plain text or HTML), offerType?, sequenceStep? }
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -22,11 +24,10 @@ export async function POST(req: NextRequest) {
   if (!prospect) return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
   if (!prospect.email) return NextResponse.json({ error: 'Prospect has no email address on file' }, { status: 400 });
   if (prospect.disqualified) return NextResponse.json({ error: `Prospect is disqualified (${prospect.disqualify_reason})` }, { status: 400 });
+  if (prospect.unsubscribed) return NextResponse.json({ error: 'This prospect has unsubscribed — sending is blocked.' }, { status: 400 });
 
   try {
-    [connection] = await sql`
-      select * from mailbox_connections where is_active = true order by created_at desc limit 1
-    `;
+    connection = await getActiveMailboxConnection();
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Query failed' }, { status: 500 });
   }
@@ -34,62 +35,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No connected Outlook mailbox. Connect one in Settings first.' }, { status: 400 });
   }
 
-  let accessToken = connection.access_token as string | null;
-  const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at).getTime() : 0;
-  if (!accessToken || expiresAt < Date.now() + 60_000) {
-    if (!connection.refresh_token) {
-      return NextResponse.json({ error: 'Outlook connection expired. Reconnect in Settings.' }, { status: 400 });
-    }
-    const refreshed = await refreshAccessToken(connection.refresh_token);
-    accessToken = refreshed.access_token;
-    try {
-      await sql`
-        update mailbox_connections
-        set access_token = ${refreshed.access_token}, refresh_token = ${refreshed.refresh_token}, token_expires_at = ${new Date(Date.now() + refreshed.expires_in * 1000).toISOString()}
-        where id = ${connection.id}
-      `;
-    } catch (err) {
-      return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to persist refreshed token' }, { status: 500 });
-    }
-  }
-
-  const bodyHtml = /<[a-z][\s\S]*>/i.test(emailBody) ? emailBody : emailBody.replace(/\n/g, '<br/>');
-
-  let sentMessage;
+  let accessToken: string;
   try {
-    sentMessage = await sendMailViaGraph(accessToken!, {
-      toEmail: prospect.email,
-      toName: [prospect.contact_first_name, prospect.contact_last_name].filter(Boolean).join(' ') || prospect.name,
-      subject,
-      bodyHtml,
-    });
+    accessToken = await getValidAccessTokenForConnection(connection);
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Send via Outlook failed' }, { status: 502 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to get a valid Outlook access token' }, { status: 400 });
   }
 
   try {
-    const [message] = await sql`
-      insert into messages (
-        prospect_id, direction, subject, body_html, body_text, offer_type, sequence_step,
-        ai_generated, status, ms_message_id, ms_conversation_id, from_address, to_address, sent_at
-      ) values (
-        ${prospectId}, 'outbound', ${subject}, ${bodyHtml}, ${emailBody}, ${offerType ?? null}, ${sequenceStep ?? 1},
-        ${Boolean(body.aiGenerated)}, 'sent', ${sentMessage?.id ?? null}, ${sentMessage?.conversationId ?? null}, ${connection.email}, ${prospect.email}, ${new Date().toISOString()}
-      )
-      returning *
-    `;
-
-    await sql`
-      update prospects set stage = 'reached_out', last_contacted_at = ${new Date().toISOString()} where id = ${prospectId}
-    `;
-
-    await sql`
-      insert into activity_log (prospect_id, event_type, detail)
-      values (${prospectId}, 'email_sent', ${`Sent "${subject}" via ${connection.email}`})
-    `;
-
+    const message = await sendAndRecordOutreach({
+      prospect: prospect as { id: string; email: string; contact_first_name: string | null; contact_last_name: string | null; name: string },
+      connection,
+      accessToken,
+      subject,
+      bodyText: emailBody,
+      offerType,
+      sequenceStep: sequenceStep ?? 1,
+      aiGenerated: Boolean(body.aiGenerated),
+      activityDetail: `Sent "${subject}" via ${connection.email}`,
+    });
     return NextResponse.json({ message });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to record sent message' }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Send via Outlook failed' }, { status: 502 });
   }
 }

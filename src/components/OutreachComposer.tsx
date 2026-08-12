@@ -1,11 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { ACTIVATION_CHANNELS } from '@/lib/rei-grove-content';
 import type { Prospect } from '@/types';
 
-export default function OutreachComposer({ prospect, onSent }: { prospect: Prospect; onSent: () => void }) {
+export interface ComposerPrefill {
+  subject: string;
+  body: string;
+}
+
+export default function OutreachComposer({
+  prospect,
+  onSent,
+  prefill,
+}: {
+  prospect: Prospect;
+  onSent: () => void;
+  prefill?: ComposerPrefill | null;
+}) {
   const [offerType, setOfferType] = useState(prospect.prospect_type === 'partner' ? 'webinar' : 'affiliate_terms');
   const [sequenceStep, setSequenceStep] = useState(1);
   const [subject, setSubject] = useState('');
@@ -14,7 +27,14 @@ export default function OutreachComposer({ prospect, onSent }: { prospect: Prosp
   const [sending, setSending] = useState(false);
   const [aiGenerated, setAiGenerated] = useState(false);
 
-  const blocked = prospect.disqualified || !prospect.email;
+  useEffect(() => {
+    if (!prefill) return;
+    setSubject(prefill.subject);
+    setBody(prefill.body);
+    setAiGenerated(true);
+  }, [prefill]);
+
+  const blocked = prospect.disqualified || prospect.unsubscribed || !prospect.email;
 
   async function draft() {
     setDrafting(true);
@@ -69,7 +89,11 @@ export default function OutreachComposer({ prospect, onSent }: { prospect: Prosp
 
       {blocked && (
         <p className="rounded bg-red-50 p-3 text-sm text-red-700">
-          {prospect.disqualified ? `This prospect is disqualified (${prospect.disqualify_reason}) — sending is blocked.` : 'This prospect has no email address on file — add one before sending.'}
+          {prospect.disqualified
+            ? `This prospect is disqualified (${prospect.disqualify_reason}) — sending is blocked.`
+            : prospect.unsubscribed
+              ? 'This prospect has unsubscribed — sending is blocked.'
+              : 'This prospect has no email address on file — add one before sending.'}
         </p>
       )}
 

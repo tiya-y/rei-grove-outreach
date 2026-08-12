@@ -68,13 +68,14 @@ export interface Prospect {
   website: string | null;
   linkedin_url: string | null;
   category: string | null;
+  niche: string | null;
   city: string | null;
   state: string | null;
   audience_size_est: number | null;
   content_presence: string | null;
   domain_rating: number | null;
   organic_traffic_est: number | null;
-  source: 'manual' | 'n8n' | 'ahrefs';
+  source: 'manual' | 'n8n' | 'ahrefs' | 'discovery';
   source_ref: string | null;
   batch_id: string | null;
   score: number | null;
@@ -83,6 +84,8 @@ export interface Prospect {
   disqualify_reason: string | null;
   stage: ProspectStage;
   notes: string | null;
+  unsubscribed: boolean;
+  unsubscribed_at: string | null;
   last_contacted_at: string | null;
   last_reply_at: string | null;
   created_at: string;
@@ -131,7 +134,7 @@ export interface MailboxConnection {
 
 export interface ProspectBatch {
   id: string;
-  source: 'n8n' | 'csv';
+  source: 'n8n' | 'csv' | 'discovery';
   label: string | null;
   source_ref: string | null;
   created_at: string;

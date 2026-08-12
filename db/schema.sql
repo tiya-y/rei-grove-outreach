@@ -37,7 +37,8 @@ create table if not exists prospects (
   linkedin_url        text,
 
   -- Classification
-  category            text,   -- proptech | re_services | education_media | adjacent_tech | blog | youtube | podcast | newsletter | webinar | community | other
+  category            text,   -- content FORMAT: proptech | re_services | education_media | adjacent_tech | blog | youtube | podcast | newsletter | webinar | community | other
+  niche               text,   -- content TOPIC (creator/affiliate only) — see CREATOR_DISCOVERY_NICHES in lib/rei-grove-content.ts
   city                text,
   state               text,
 
@@ -63,6 +64,13 @@ create table if not exists prospects (
     -- new | researched | approved | reached_out | replied | in_discussion | partner_live | affiliate_active | stalled | pass
 
   notes               text,
+
+  -- Opt-out — stops the automated follow-up sequence immediately (see
+  -- lib/outreachSend.ts). Set via the public /api/unsubscribe/[id] link
+  -- appended to every automated send, a "do not contact" reply during sync,
+  -- or a manual toggle on the prospect page.
+  unsubscribed        boolean not null default false,
+  unsubscribed_at     timestamptz,
 
   last_contacted_at   timestamptz,
   last_reply_at        timestamptz,
@@ -182,3 +190,11 @@ create trigger update_mailbox_connections_updated_at
 -- per-row security layer here — same trust model as the service-role key
 -- had under Supabase, just without an RLS layer to configure.
 -- ============================================================
+
+-- ============================================================
+-- Migration: niche + unsubscribe columns. Safe to re-run against a
+-- database that already ran an earlier version of this file.
+-- ============================================================
+alter table prospects add column if not exists niche text;
+alter table prospects add column if not exists unsubscribed boolean not null default false;
+alter table prospects add column if not exists unsubscribed_at timestamptz;

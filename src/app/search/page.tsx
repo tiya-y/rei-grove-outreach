@@ -3,11 +3,15 @@
 import { Suspense, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import toast from 'react-hot-toast';
 import useSWRLike from '@/lib/useSWRLike';
 import type { Prospect, ProspectStage } from '@/types';
 import { PROSPECT_STAGES } from '@/types';
+import { CREATOR_DISCOVERY_NICHES } from '@/lib/rei-grove-content';
 import ScoreBadge from '@/components/ScoreBadge';
 import StageBadge from '@/components/StageBadge';
+
+const NICHE_LABEL: Record<string, string> = Object.fromEntries(CREATOR_DISCOVERY_NICHES.map((n) => [n.key, n.label]));
 
 // Prospects that haven't been approved for outreach yet — this is the pool
 // Prospect Search searches, scores, and approves out of. Disqualified
@@ -23,6 +27,32 @@ function SearchPageInner() {
   const [stageFilter, setStageFilter] = useState<ProspectStage | 'all'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | Prospect['prospect_type']>('all');
   const [search, setSearch] = useState('');
+  const [discoverOpen, setDiscoverOpen] = useState(false);
+  const [discoverNiche, setDiscoverNiche] = useState(CREATOR_DISCOVERY_NICHES[0].key);
+  const [discovering, setDiscovering] = useState(false);
+
+  async function runDiscovery() {
+    setDiscovering(true);
+    try {
+      const res = await fetch('/api/discovery/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nicheKey: discoverNiche }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      if (json.created > 0) {
+        toast.success(`Found ${json.created} new creator${json.created === 1 ? '' : 's'} — added to Prospect Search.`);
+      } else {
+        toast(json.message ?? 'No new creators found this run — everyone found already exists or was disqualified.');
+      }
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Discovery search failed');
+    } finally {
+      setDiscovering(false);
+    }
+  }
 
   const prospects = useMemo(() => {
     let list = data?.prospects ?? [];
@@ -57,10 +87,41 @@ function SearchPageInner() {
             )}
           </p>
         </div>
-        <Link href="/search/new" className="btn-primary">
-          + Add prospect
-        </Link>
+        <div className="flex gap-2">
+          <button className="btn-secondary" onClick={() => setDiscoverOpen((o) => !o)}>
+            Discover creators
+          </button>
+          <Link href="/search/new" className="btn-primary">
+            + Add prospect
+          </Link>
+        </div>
       </div>
+
+      {discoverOpen && (
+        <div className="card space-y-3">
+          <h2 className="font-semibold text-gray-900">Discover creators</h2>
+          <p className="text-sm text-gray-500">
+            Uses Ahrefs to find real, currently-ranking sites for the niche below (no guessing or invented names) and adds any new
+            ones as prospects tagged &quot;blog&quot; by default for you to reclassify and review. Requires an Ahrefs API key. Content
+            quality and format vary run to run and won&apos;t always hit the target count exactly.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="label">Niche</label>
+              <select className="input min-w-[22rem]" value={discoverNiche} onChange={(e) => setDiscoverNiche(e.target.value)}>
+                {CREATOR_DISCOVERY_NICHES.map((n) => (
+                  <option key={n.key} value={n.key}>
+                    {n.label} — target {n.targetCount} ({n.affiliateFitNote})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button className="btn-primary" onClick={runDiscovery} disabled={discovering}>
+              {discovering ? 'Searching…' : 'Find creators'}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-3">
         <input
@@ -97,6 +158,7 @@ function SearchPageInner() {
               <th className="px-4 py-2">Name</th>
               <th className="px-4 py-2">Type</th>
               <th className="px-4 py-2">Category</th>
+              <th className="px-4 py-2">Niche</th>
               <th className="px-4 py-2">Score</th>
               <th className="px-4 py-2">Stage</th>
               <th className="px-4 py-2">Source</th>
@@ -113,6 +175,7 @@ function SearchPageInner() {
                 </td>
                 <td className="px-4 py-3 capitalize text-gray-600">{p.prospect_type}</td>
                 <td className="px-4 py-3 text-gray-600">{p.category ?? '—'}</td>
+                <td className="px-4 py-3 text-gray-600">{p.niche ? NICHE_LABEL[p.niche] ?? p.niche : '—'}</td>
                 <td className="px-4 py-3">
                   <ScoreBadge score={p.score} tier={p.score_breakdown && 'tier' in p.score_breakdown ? (p.score_breakdown as { tier: string }).tier : null} />
                 </td>

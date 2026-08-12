@@ -48,11 +48,11 @@ export async function POST(req: NextRequest) {
     const [prospect] = await sql`
       insert into prospects (
         prospect_type, name, contact_first_name, contact_last_name, contact_title,
-        email, website, linkedin_url, category, city, state, audience_size_est,
+        email, website, linkedin_url, category, niche, city, state, audience_size_est,
         content_presence, source, source_ref, disqualified, disqualify_reason, stage, notes
       ) values (
         ${body.prospect_type ?? 'partner'}, ${body.name}, ${body.contact_first_name ?? null}, ${body.contact_last_name ?? null}, ${body.contact_title ?? null},
-        ${body.email ?? null}, ${body.website ?? null}, ${body.linkedin_url ?? null}, ${body.category ?? null}, ${body.city ?? null}, ${body.state ?? null}, ${body.audience_size_est ?? null},
+        ${body.email ?? null}, ${body.website ?? null}, ${body.linkedin_url ?? null}, ${body.category ?? null}, ${body.niche ?? null}, ${body.city ?? null}, ${body.state ?? null}, ${body.audience_size_est ?? null},
         ${body.content_presence ?? null}, ${body.source ?? 'manual'}, ${body.source_ref ?? null}, ${dq.disqualified}, ${dq.reason ?? null}, ${stage}, ${body.notes ?? null}
       )
       returning *

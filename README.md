@@ -16,22 +16,28 @@ so it stays accurate to REI Grove's current brand, tiers, and voice.
   top-scored prospects still waiting to be approved.
 - **Prospect Search** — three types: `partner` (companies — proptech, RE services, education/media),
   `creator` (individual bloggers/YouTubers/podcasters/newsletter writers), and `affiliate` (simple
-  referral-only relationships). Add manually, or have an n8n workflow push discoveries into the pipeline
-  automatically. Score with the exact rubric the team already uses by hand: partnership-prospector's
-  5-dimension Fit Scorecard for `partner` prospects, and affiliate-prospector's channel-aware 100-point
-  rubric (YouTube / Blog / Podcast / Newsletter) for `creator`/`affiliate` prospects — Claude can suggest
-  dimension scores from pasted research notes, you review and edit before saving. Every new prospect
-  (manual or n8n) is checked against the Ledgre/Innago competitor blocklist from partnership-prospector
-  (extend the list in Settings without a redeploy). Once scored and qualified, **approve** a prospect to
-  move it into Outreach.
-- **Outreach** — Claude drafts the initial email (and follow-ups) in REI Grove's voice, mapped to one of
-  the 7 partnership activation channels (webinar, co-branded resource, newsletter feature, etc.) or a
-  plain affiliate/referral offer, sent from a connected Outlook mailbox via Microsoft Graph. A sync job
-  reads Inbox + Sent Items, matches messages to prospects by email address, and logs the whole thread —
-  including Claude reply classification on inbound messages (interested / meeting request / not
-  interested / do not contact / etc.) — so you can keep the conversation going from the same page.
-- **History** — every bulk-import batch (n8n discovery workflows) with its prospect count, and a directory
-  of every email thread with anyone ever reached out to.
+  referral-only relationships). Add manually, have an n8n workflow push discoveries into the pipeline
+  automatically, or use **Discover creators** to pull real, currently-ranking sites from Ahrefs' search
+  data across 8 target niches (small landlord, house hacking/BRRRR, wholesaling/flip, multifamily,
+  mobile home park/self-storage, short-term rental, women in REI, general RE education) — no LLM
+  guessing, every result is a real URL you review and reclassify as needed. Score with the
+  exact rubric the team already uses by hand: partnership-prospector's 5-dimension Fit Scorecard for
+  `partner` prospects, and affiliate-prospector's channel-aware 100-point rubric (YouTube / Blog / Podcast
+  / Newsletter) for `creator`/`affiliate` prospects — Claude can suggest dimension scores from pasted
+  research notes, you review and edit before saving. Every new prospect (manual, n8n, or discovered) is
+  checked against the Ledgre/Innago competitor blocklist from partnership-prospector (extend the list in
+  Settings without a redeploy). Once scored and qualified, **approve** a prospect to move it into Outreach.
+- **Outreach** — Claude drafts a personalized initial email in REI Grove's voice, mapped to one of the 7
+  partnership activation channels (webinar, co-branded resource, newsletter feature, etc.) or a plain
+  affiliate/referral offer, sent from a connected Outlook mailbox via Microsoft Graph. If there's no reply,
+  an automated sequence follows up 7 days later, 7 days after that, and 30 days after that, then stops —
+  any reply or unsubscribe (a real opt-out link is on every send) cancels it immediately. A sync job reads
+  Inbox + Sent Items, matches messages to prospects by email address, and logs the whole thread — Claude
+  classifies inbound replies (interested / meeting request / not interested / do not contact / etc.) and,
+  for anyone interested, drafts a full personalized reply you can load straight into the compose box with
+  one click. All AI-drafted copy avoids em dashes and generic AI-sounding phrasing by design.
+- **History** — every bulk-import batch (n8n or Discover creators) with its prospect count, and a
+  directory of every email thread with anyone ever reached out to.
 - **Pipeline** — New → Researched → Approved → Reached Out → Replied → In Discussion → Partner Live /
   Affiliate Active, plus Stalled / Pass, with a per-prospect activity log throughout.
 

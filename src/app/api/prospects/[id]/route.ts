@@ -18,8 +18,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
 const ALLOWED_FIELDS = [
   'prospect_type', 'name', 'contact_first_name', 'contact_last_name', 'contact_title',
-  'email', 'website', 'linkedin_url', 'category', 'city', 'state', 'audience_size_est',
+  'email', 'website', 'linkedin_url', 'category', 'niche', 'city', 'state', 'audience_size_est',
   'content_presence', 'stage', 'notes', 'disqualified', 'disqualify_reason',
+  'unsubscribed', 'unsubscribed_at',
 ] as const;
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {

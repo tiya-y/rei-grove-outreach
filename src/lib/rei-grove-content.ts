@@ -132,3 +132,45 @@ export const COMPETITOR_DOMAINS_FOR_WARM_LEADS = [
   { competitor: 'AppFolio', domain: 'appfolio.com' },
   { competitor: 'Entrata', domain: 'entrata.com' },
 ];
+
+// ============================================================
+// Creator discovery — the content-creator niches Prospect Search's
+// "Discover creators" search targets, with a rough target count per niche
+// and a note on how well REI Grove's affiliate offer tends to convert there.
+// Target counts are a goal for the pipeline overall, not a guarantee any one
+// search call returns. `keywords` are the queries used to find real,
+// currently-ranking sites via Ahrefs SERP data — see
+// lib/ahrefs.ts's discoverDomainsForNiche().
+// ============================================================
+export interface CreatorDiscoveryNiche {
+  key: string;
+  label: string;
+  targetCount: number;
+  affiliateFitNote: string;
+  keywords: string[];
+  // Plural, people-first phrase for mail-merge copy, e.g. "a place for
+  // {{audienceLabel}} to connect" — see lib/outreachTemplates.ts.
+  audienceLabel: string;
+}
+
+export const CREATOR_DISCOVERY_NICHES: CreatorDiscoveryNiche[] = [
+  { key: 'small_landlord', label: 'Small Landlord / Self-Managing / Buy-and-Hold', targetCount: 13, affiliateFitNote: 'Mostly high fit', keywords: ['self managing landlord tips', 'buy and hold rental property tips', 'DIY landlord advice'], audienceLabel: 'self-managing landlords' },
+  { key: 'house_hacking_beginner', label: 'House Hacking / BRRRR / Beginner Investor', targetCount: 4, affiliateFitNote: 'High to medium fit', keywords: ['house hacking tips', 'BRRRR method explained', 'beginner real estate investor advice'], audienceLabel: 'beginner real estate investors' },
+  { key: 'wholesaling_flip', label: 'Wholesaling / Fix & Flip', targetCount: 8, affiliateFitNote: 'Mostly low fit (tangential to landlording)', keywords: ['real estate wholesaling tips', 'house flipping advice'], audienceLabel: 'wholesalers and house flippers' },
+  { key: 'multifamily_syndication', label: 'Multifamily / Syndication', targetCount: 6, affiliateFitNote: 'Mostly low fit (accredited-investor skew)', keywords: ['multifamily syndication explained', 'apartment investing tips'], audienceLabel: 'multifamily investors' },
+  { key: 'mhp_self_storage', label: 'Mobile Home Park / Self-Storage', targetCount: 4, affiliateFitNote: 'Low fit (niche/accredited)', keywords: ['mobile home park investing tips', 'self storage investing tips'], audienceLabel: 'mobile home park and self-storage investors' },
+  { key: 'short_term_rental', label: 'Short-Term Rental / Airbnb Hosting', targetCount: 17, affiliateFitNote: 'Mixed, several high-fit', keywords: ['airbnb hosting tips', 'airbnb superhost advice', 'short term rental arbitrage tips'], audienceLabel: 'short-term rental hosts' },
+  { key: 'women_in_rei', label: 'Women in Real Estate Investing', targetCount: 10, affiliateFitNote: 'Mixed, several high-fit', keywords: ['women real estate investors advice', 'women in real estate investing tips'], audienceLabel: 'women real estate investors' },
+  { key: 'general_rei_education', label: 'General RE Investing Education', targetCount: 9, affiliateFitNote: 'Medium fit', keywords: ['real estate investing tips for beginners', 'real estate investor education'], audienceLabel: 'real estate investors' },
+];
+
+// Fallback for creator/affiliate prospects with no niche set (e.g. added
+// manually without picking one).
+export const DEFAULT_AUDIENCE_LABEL = 'real estate investors';
+
+// ============================================================
+// Product explainer — grounding material for AI-drafted replies to prospects
+// who respond with interest or ask for more info. Keep concrete and current;
+// update alongside the rei-grove-knowledge skill.
+// ============================================================
+export const REI_GROVE_PRODUCT_EXPLAINER = `REI Grove (by Innago) is a free hub for real estate investors and landlords: a resource library (guides, calculators, templates), a community, webinars, "The Breakdown" and "The Rentish Podcast," and RE Sidekick, a set of tools for running rental properties. The free tier covers the resource library and community. REI Grove+ (${REI_GROVE_TIERS.plus.priceLabel}, ${REI_GROVE_TIERS.plus.trial}) adds the full tool suite and premium content. It's built by the same team behind Innago, a property management software company, so the practical, ops-focused content comes from people who actually work with landlords day to day rather than general finance media.`;

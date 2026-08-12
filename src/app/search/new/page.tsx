@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
+import { CREATOR_DISCOVERY_NICHES } from '@/lib/rei-grove-content';
 
 const CATEGORY_OPTIONS: Record<string, string[]> = {
   partner: ['proptech', 're_services', 'education_media', 'adjacent_tech', 'other'],
@@ -21,6 +22,7 @@ export default function NewProspectPage() {
     email: '',
     website: '',
     category: '',
+    niche: '',
     city: '',
     state: '',
     audience_size_est: '',
@@ -121,6 +123,20 @@ export default function NewProspectPage() {
             <input className="input" type="number" value={form.audience_size_est} onChange={(e) => update('audience_size_est', e.target.value)} placeholder="subscribers / monthly visitors" />
           </div>
         </div>
+
+        {form.prospect_type !== 'partner' && (
+          <div>
+            <label className="label">Content niche/topic</label>
+            <select className="input" value={form.niche} onChange={(e) => update('niche', e.target.value)}>
+              <option value="">—</option>
+              {CREATOR_DISCOVERY_NICHES.map((n) => (
+                <option key={n.key} value={n.key}>
+                  {n.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <div>

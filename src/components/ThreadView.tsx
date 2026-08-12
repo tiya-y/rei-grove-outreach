@@ -5,7 +5,7 @@ function formatDate(iso: string | null) {
   return new Date(iso).toLocaleString();
 }
 
-export default function ThreadView({ messages }: { messages: Message[] }) {
+export default function ThreadView({ messages, onUseDraft }: { messages: Message[]; onUseDraft?: (subject: string, body: string) => void }) {
   if (messages.length === 0) {
     return <p className="text-sm text-gray-400">No messages yet. Send the first outreach email below, or run a sync if you expect replies to already be in Outlook.</p>;
   }
@@ -31,7 +31,17 @@ export default function ThreadView({ messages }: { messages: Message[] }) {
           )}
           {m.direction === 'inbound' && m.ai_suggested_response && (
             <div className="mt-2 rounded bg-white p-2 text-xs text-gray-600">
-              <span className="font-medium text-gray-500">Suggested response: </span>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="font-medium text-gray-500">Suggested response:</span>
+                {onUseDraft && (
+                  <button
+                    className="text-grove-dark hover:underline"
+                    onClick={() => onUseDraft(m.subject ? `Re: ${m.subject}` : 'Re:', m.ai_suggested_response!)}
+                  >
+                    Use this draft
+                  </button>
+                )}
+              </div>
               {m.ai_suggested_response}
             </div>
           )}

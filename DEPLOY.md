@@ -46,10 +46,11 @@ work — Graph's delegated-permission flow just needs someone to sign in once an
 personal inbox, replies to outreach will land alongside that person's regular mail (filtered by conversation
 in the app's thread view, but still physically in their Inbox).
 
-## Step 4 — Ahrefs (optional)
+## Step 4 — Ahrefs (optional, but required for creator discovery)
 
-Only needed if you want Domain Rating / organic traffic pulled automatically for scoring. Skip this and the
-app just shows "no data" for that signal.
+Powers two things: Domain Rating / organic traffic pulled for scoring, and the **Discover creators**
+search on Prospect Search (finds real, currently-ranking sites for a niche via Ahrefs SERP data). Skip
+this and scoring just shows "no data" for that signal, and Discover creators is disabled.
 
 1. [app.ahrefs.com/account/api](https://app.ahrefs.com/account/api) → create key → `AHREFS_API_KEY`.
 
@@ -75,6 +76,14 @@ mailbox sync running on a tighter schedule than Vercel's own cron allows.
    - Header: `x-n8n-secret: <the same secret>`
    This is the recommended way to run sync on a tight interval — Vercel's Hobby plan cron only fires once a
    day, which is too slow for "did they reply yet."
+4. **Follow-up sequence workflow**: a **Schedule Trigger** (once a day is plenty, since the cadence is
+   measured in days) → **HTTP Request** node:
+   - Method: `POST`
+   - URL: `https://YOUR-VERCEL-URL.vercel.app/api/outreach/follow-ups/run`
+   - Header: `x-n8n-secret: <the same secret>`
+   Sends the next scheduled follow-up (day 7 / day 14 / day 44) to any approved prospect who hasn't replied
+   or unsubscribed. Without this workflow, follow-ups only fire when someone clicks "Run follow-ups now" in
+   Settings.
 
 ## Step 6 — Deploy to Vercel
 

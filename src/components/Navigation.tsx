@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import Logo from './Logo';
 
 const LINKS = [
   { href: '/', label: 'Dashboard' },
@@ -16,10 +17,10 @@ export default function Navigation() {
   return (
     <nav className="border-b bg-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-2">
-          <span className="text-lg font-semibold text-grove-dark">REI Grove</span>
+        <Link href="/" className="flex items-center gap-2" aria-label="REI Grove by Innago home">
+          <Logo />
           <span className="text-sm text-gray-400">Outreach</span>
-        </div>
+        </Link>
         <div className="flex items-center gap-4 text-sm">
           {LINKS.map((link) => {
             const active = pathname === link.href;

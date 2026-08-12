@@ -13,31 +13,9 @@
 // ============================================================
 
 import { sql } from './db';
-import { refreshAccessToken, listRecentMessages, type GraphMessage } from './ms365';
+import { listRecentMessages, type GraphMessage } from './ms365';
 import { classifyReply } from './claude';
-
-async function getValidAccessToken(connection: {
-  id: string;
-  access_token: string | null;
-  refresh_token: string | null;
-  token_expires_at: string | null;
-}) {
-  const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at).getTime() : 0;
-  const isExpired = !connection.access_token || expiresAt < Date.now() + 60_000;
-
-  if (!isExpired) return connection.access_token!;
-
-  if (!connection.refresh_token) throw new Error('No refresh token on file — reconnect Outlook in Settings.');
-
-  const refreshed = await refreshAccessToken(connection.refresh_token);
-  await sql`
-    update mailbox_connections
-    set access_token = ${refreshed.access_token}, refresh_token = ${refreshed.refresh_token}, token_expires_at = ${new Date(Date.now() + refreshed.expires_in * 1000).toISOString()}
-    where id = ${connection.id}
-  `;
-
-  return refreshed.access_token;
-}
+import { getValidAccessTokenForConnection } from './outreachSend';
 
 function extractAddress(msg: GraphMessage, direction: 'inbound' | 'outbound') {
   if (direction === 'inbound') return msg.from?.emailAddress?.address?.toLowerCase() ?? null;
@@ -65,8 +43,9 @@ export async function syncMailbox(): Promise<SyncResult> {
 
   let accessToken: string;
   try {
-    accessToken = await getValidAccessToken(connection as {
+    accessToken = await getValidAccessTokenForConnection(connection as {
       id: string;
+      email: string | null;
       access_token: string | null;
       refresh_token: string | null;
       token_expires_at: string | null;
@@ -153,6 +132,19 @@ export async function syncMailbox(): Promise<SyncResult> {
         insert into activity_log (prospect_id, event_type, detail)
         values (${prospect.id}, 'email_received', ${`Reply synced from Outlook: "${msg.subject}"`})
       `;
+
+      // A "stop emailing me" reply is functionally an unsubscribe — stop the
+      // automated follow-up sequence immediately rather than waiting for a
+      // human to notice the classification.
+      if (aiClassification === 'do_not_contact') {
+        await sql`
+          update prospects set unsubscribed = true, unsubscribed_at = now() where id = ${prospect.id}
+        `;
+        await sql`
+          insert into activity_log (prospect_id, event_type, detail)
+          values (${prospect.id}, 'unsubscribed', 'Auto-unsubscribed: reply classified as do_not_contact')
+        `;
+      }
     }
   }
 
