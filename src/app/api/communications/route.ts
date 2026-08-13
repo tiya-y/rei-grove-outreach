@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 
-// GET /api/communications — every prospect with at least one message,
-// aggregated (message count, last activity), newest activity first. Used by
-// the History page as a directory into full threads on the prospect detail
-// page (regardless of the prospect's current pipeline stage).
+// GET /api/communications — every prospect with at least one sent message,
+// aggregated (message count, last send), newest first. Used by the History
+// page as a directory into the sent log on the prospect detail page
+// (regardless of the prospect's current pipeline stage).
 export async function GET() {
   try {
     const communications = await sql`
@@ -14,7 +14,7 @@ export async function GET() {
         p.prospect_type,
         p.stage,
         count(m.id)::int as message_count,
-        max(coalesce(m.sent_at, m.received_at)) as last_activity_at
+        max(m.sent_at) as last_activity_at
       from prospects p
       join messages m on m.prospect_id = p.id
       group by p.id

@@ -9,8 +9,8 @@ import { PROSPECT_STAGES, isOutreachStage } from '@/types';
 import StageBadge from '@/components/StageBadge';
 import ScoreBadge from '@/components/ScoreBadge';
 import ScoringPanel from '@/components/ScoringPanel';
-import ThreadView from '@/components/ThreadView';
-import OutreachComposer, { type ComposerPrefill } from '@/components/OutreachComposer';
+import SentLog from '@/components/SentLog';
+import OutreachComposer from '@/components/OutreachComposer';
 
 interface DetailResponse {
   prospect: Prospect;
@@ -23,7 +23,6 @@ export default function ProspectDetailPage() {
   const router = useRouter();
   const { data, loading, refresh } = useSWRLike<DetailResponse>(`/api/prospects/${params.id}`);
   const [ahrefsLoading, setAhrefsLoading] = useState(false);
-  const [prefill, setPrefill] = useState<ComposerPrefill | null>(null);
 
   if (loading || !data) return <p className="text-sm text-gray-400">Loading…</p>;
 
@@ -99,8 +98,8 @@ export default function ProspectDetailPage() {
       {prospect.unsubscribed && (
         <div className="flex items-center justify-between rounded-lg bg-orange-50 p-4 text-sm text-orange-700">
           <span>
-            Unsubscribed{prospect.unsubscribed_at ? ` on ${new Date(prospect.unsubscribed_at).toLocaleDateString()}` : ''} — the
-            automated follow-up sequence has stopped and sending is blocked.
+            Unsubscribed{prospect.unsubscribed_at ? ` on ${new Date(prospect.unsubscribed_at).toLocaleDateString()}` : ''} — generating
+            or recording outreach is blocked.
           </span>
           <button className="btn-secondary" onClick={() => updateProspect({ unsubscribed: false, unsubscribed_at: null })}>
             Resubscribe
@@ -165,7 +164,7 @@ export default function ProspectDetailPage() {
 
         <div className="col-span-2 space-y-6">
           {isOutreachStage(prospect.stage) ? (
-            <OutreachComposer prospect={prospect} onSent={() => refresh()} prefill={prefill} />
+            <OutreachComposer prospect={prospect} onSent={() => refresh()} />
           ) : (
             <>
               <ScoringPanel prospect={prospect} onScored={() => refresh()} />
@@ -193,8 +192,8 @@ export default function ProspectDetailPage() {
       </div>
 
       <div className="card">
-        <h2 className="mb-3 font-semibold text-gray-900">Email thread</h2>
-        <ThreadView messages={messages} onUseDraft={(subject, body) => setPrefill({ subject, body })} />
+        <h2 className="mb-3 font-semibold text-gray-900">Sent log</h2>
+        <SentLog messages={messages} />
       </div>
 
       <div className="card">

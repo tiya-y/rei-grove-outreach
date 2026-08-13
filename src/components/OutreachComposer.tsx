@@ -1,38 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { ACTIVATION_CHANNELS } from '@/lib/rei-grove-content';
 import type { Prospect } from '@/types';
 
-export interface ComposerPrefill {
-  subject: string;
-  body: string;
-}
-
-export default function OutreachComposer({
-  prospect,
-  onSent,
-  prefill,
-}: {
-  prospect: Prospect;
-  onSent: () => void;
-  prefill?: ComposerPrefill | null;
-}) {
+export default function OutreachComposer({ prospect, onSent }: { prospect: Prospect; onSent: () => void }) {
   const [offerType, setOfferType] = useState(prospect.prospect_type === 'partner' ? 'webinar' : 'affiliate_terms');
   const [sequenceStep, setSequenceStep] = useState(1);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [drafting, setDrafting] = useState(false);
-  const [sending, setSending] = useState(false);
+  const [marking, setMarking] = useState(false);
   const [aiGenerated, setAiGenerated] = useState(false);
-
-  useEffect(() => {
-    if (!prefill) return;
-    setSubject(prefill.subject);
-    setBody(prefill.body);
-    setAiGenerated(true);
-  }, [prefill]);
 
   const blocked = prospect.disqualified || prospect.unsubscribed || !prospect.email;
 
@@ -49,7 +29,7 @@ export default function OutreachComposer({
       setSubject(json.draft.subject);
       setBody(json.draft.body);
       setAiGenerated(true);
-      toast.success('Draft generated — review before sending.');
+      toast.success('Draft generated — review before copying.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Draft generation failed');
     } finally {
@@ -57,12 +37,25 @@ export default function OutreachComposer({
     }
   }
 
-  async function send() {
+  async function copyToClipboard() {
     if (!subject || !body) {
       toast.error('Generate or write a subject + body first.');
       return;
     }
-    setSending(true);
+    try {
+      await navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`);
+      toast.success('Copied — paste it into your own email and send.');
+    } catch {
+      toast.error('Could not copy to clipboard.');
+    }
+  }
+
+  async function markSent() {
+    if (!subject || !body) {
+      toast.error('Generate or write a subject + body first.');
+      return;
+    }
+    setMarking(true);
     try {
       const res = await fetch('/api/outreach/send', {
         method: 'POST',
@@ -71,29 +64,33 @@ export default function OutreachComposer({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
-      toast.success('Sent via Outlook.');
+      toast.success('Marked as sent.');
       setSubject('');
       setBody('');
       setAiGenerated(false);
       onSent();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Send failed');
+      toast.error(err instanceof Error ? err.message : 'Failed to record send');
     } finally {
-      setSending(false);
+      setMarking(false);
     }
   }
 
   return (
     <div className="card space-y-4">
       <h2 className="font-semibold text-gray-900">Compose outreach</h2>
+      <p className="text-sm text-gray-500">
+        Generate the draft, copy it, and send it from your own inbox. Once it&apos;s sent, mark it here so the pipeline stays up to
+        date.
+      </p>
 
       {blocked && (
         <p className="rounded bg-red-50 p-3 text-sm text-red-700">
           {prospect.disqualified
-            ? `This prospect is disqualified (${prospect.disqualify_reason}) — sending is blocked.`
+            ? `This prospect is disqualified (${prospect.disqualify_reason}) — drafting is blocked.`
             : prospect.unsubscribed
-              ? 'This prospect has unsubscribed — sending is blocked.'
-              : 'This prospect has no email address on file — add one before sending.'}
+              ? 'This prospect has unsubscribed — drafting is blocked.'
+              : 'This prospect has no email address on file — add one first.'}
         </p>
       )}
 
@@ -114,6 +111,7 @@ export default function OutreachComposer({
             <option value={1}>1 — Initial outreach</option>
             <option value={2}>2 — Follow-up</option>
             <option value={3}>3 — Follow-up</option>
+            <option value={4}>4 — Final follow-up</option>
           </select>
         </div>
       </div>
@@ -131,9 +129,14 @@ export default function OutreachComposer({
         <textarea className="input" rows={10} value={body} onChange={(e) => setBody(e.target.value)} />
       </div>
 
-      <button className="btn-primary" onClick={send} disabled={sending || blocked}>
-        {sending ? 'Sending…' : 'Send via connected Outlook inbox'}
-      </button>
+      <div className="flex gap-2">
+        <button className="btn-secondary" onClick={copyToClipboard} disabled={blocked}>
+          Copy to clipboard
+        </button>
+        <button className="btn-primary" onClick={markSent} disabled={marking || blocked}>
+          {marking ? 'Marking…' : 'Mark as sent'}
+        </button>
+      </div>
     </div>
   );
 }

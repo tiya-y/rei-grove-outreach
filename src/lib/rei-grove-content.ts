@@ -100,16 +100,6 @@ export const EXISTING_PRODUCT_PARTNERS = [
   'Accelerent',
 ];
 
-// REI Grove membership tiers (for outreach copy / dashboard-widget mockups).
-export const REI_GROVE_TIERS = {
-  free: { name: 'REI Grove (Free)', priceLabel: '$0' },
-  plus: {
-    name: 'REI Grove+',
-    priceLabel: '$20/mo, or $16.67/mo billed annually ($200/yr)',
-    trial: '7-day trial for $1',
-  },
-};
-
 // Pre-loaded discovery keywords (from partnership-prospector + affiliate-prospector).
 export const DISCOVERY_KEYWORDS = [
   { keyword: 'property management software', priority: 'high' },
@@ -167,10 +157,3 @@ export const CREATOR_DISCOVERY_NICHES: CreatorDiscoveryNiche[] = [
 // Fallback for creator/affiliate prospects with no niche set (e.g. added
 // manually without picking one).
 export const DEFAULT_AUDIENCE_LABEL = 'real estate investors';
-
-// ============================================================
-// Product explainer — grounding material for AI-drafted replies to prospects
-// who respond with interest or ask for more info. Keep concrete and current;
-// update alongside the rei-grove-knowledge skill.
-// ============================================================
-export const REI_GROVE_PRODUCT_EXPLAINER = `REI Grove (by Innago) is a free hub for real estate investors and landlords: a resource library (guides, calculators, templates), a community, webinars, "The Breakdown" and "The Rentish Podcast," and RE Sidekick, a set of tools for running rental properties. The free tier covers the resource library and community. REI Grove+ (${REI_GROVE_TIERS.plus.priceLabel}, ${REI_GROVE_TIERS.plus.trial}) adds the full tool suite and premium content. It's built by the same team behind Innago, a property management software company, so the practical, ops-focused content comes from people who actually work with landlords day to day rather than general finance media.`;

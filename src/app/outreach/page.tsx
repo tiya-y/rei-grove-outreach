@@ -32,7 +32,7 @@ export default function OutreachPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">Outreach</h1>
-        <p className="text-sm text-gray-500">Approved prospects — send initial outreach, monitor replies, and keep the conversation going.</p>
+        <p className="text-sm text-gray-500">Approved prospects — generate outreach, send it yourself, and mark it sent.</p>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -70,7 +70,6 @@ export default function OutreachPage() {
               <th className="px-4 py-2">Score</th>
               <th className="px-4 py-2">Stage</th>
               <th className="px-4 py-2">Last contacted</th>
-              <th className="px-4 py-2">Last reply</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -89,7 +88,6 @@ export default function OutreachPage() {
                   <StageBadge stage={p.stage} />
                 </td>
                 <td className="px-4 py-3 text-gray-500">{formatDate(p.last_contacted_at)}</td>
-                <td className="px-4 py-3 text-gray-500">{formatDate(p.last_reply_at)}</td>
               </tr>
             ))}
           </tbody>

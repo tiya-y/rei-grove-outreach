@@ -1,8 +1,9 @@
 # REI Grove Outreach
 
-A cold outreach app for REI Grove's partnership, affiliate, and creator pipeline: discover prospects, score
-them, send the first outreach email from a real Outlook mailbox, and keep watching that mailbox so replies
-show up automatically as a thread — without anyone forwarding or CC'ing the app.
+A cold outreach app for REI Grove's partnership, affiliate, and creator pipeline: discover prospects,
+score them, and generate a personalized initial outreach email — you copy it, send it from your own
+inbox, and mark it sent to keep the pipeline up to date. This app never connects to or reads anyone's
+email inbox.
 
 Built as a sibling to `PO-outreach-app` (same Next.js + Postgres + Vercel stack, on Neon instead of
 Supabase), with the scoring rubrics
@@ -27,19 +28,19 @@ so it stays accurate to REI Grove's current brand, tiers, and voice.
   research notes, you review and edit before saving. Every new prospect (manual, n8n, or discovered) is
   checked against the Ledgre/Innago competitor blocklist from partnership-prospector (extend the list in
   Settings without a redeploy). Once scored and qualified, **approve** a prospect to move it into Outreach.
-- **Outreach** — Claude drafts a personalized initial email in REI Grove's voice, mapped to one of the 7
-  partnership activation channels (webinar, co-branded resource, newsletter feature, etc.) or a plain
-  affiliate/referral offer, sent from a connected Outlook mailbox via Microsoft Graph. If there's no reply,
-  an automated sequence follows up 7 days later, 7 days after that, and 30 days after that, then stops —
-  any reply or unsubscribe (a real opt-out link is on every send) cancels it immediately. A sync job reads
-  Inbox + Sent Items, matches messages to prospects by email address, and logs the whole thread — Claude
-  classifies inbound replies (interested / meeting request / not interested / do not contact / etc.) and,
-  for anyone interested, drafts a full personalized reply you can load straight into the compose box with
-  one click. All AI-drafted copy avoids em dashes and generic AI-sounding phrasing by design.
+- **Outreach** — the initial email to a creator/affiliate prospect uses the team's fixed affiliate-offer
+  template (compensation terms and links never drift); every other case (partner-type prospects, and any
+  follow-up you choose to generate) is drafted by Claude in REI Grove's voice, personalized to that
+  prospect, with hard style rules against em dashes and AI-sounding filler. You review it, **copy it to
+  your clipboard**, send it yourself from your own email, and click **Mark as sent** to log it and advance
+  the pipeline (a real unsubscribe link is included on every send). There's no automated sending and no
+  reply monitoring — if someone replies, you'll see it in your own inbox, and update their stage (Replied,
+  In Discussion, etc.) by hand.
 - **History** — every bulk-import batch (n8n or Discover creators) with its prospect count, and a
-  directory of every email thread with anyone ever reached out to.
+  directory of every prospect you've sent outreach to, linking to their sent log.
 - **Pipeline** — New → Researched → Approved → Reached Out → Replied → In Discussion → Partner Live /
-  Affiliate Active, plus Stalled / Pass, with a per-prospect activity log throughout.
+  Affiliate Active, plus Stalled / Pass. Every transition past "approved" is set manually — the app has no
+  way to detect a reply on its own. Full activity log per prospect throughout.
 
 ## Stack
 
@@ -48,19 +49,19 @@ Browser
   └── Next.js 14 App Router (Vercel)
         ├── /api/prospects*        -> Neon Postgres (prospects, scoring, disqualifiers)
         ├── /api/batches           -> Neon Postgres (bulk-import batches, for History)
-        ├── /api/communications    -> Neon Postgres (message threads directory, for History)
-        ├── /api/outreach/*        -> Anthropic Claude (draft) + Microsoft Graph (send)
-        ├── /api/graph/sync        -> Microsoft Graph (read) + Anthropic Claude (classify)  [n8n-triggered]
+        ├── /api/communications    -> Neon Postgres (sent-log directory, for History)
+        ├── /api/discovery/search  -> Ahrefs API (SERP-based creator discovery)
+        ├── /api/outreach/draft    -> Anthropic Claude (or the fixed template for creator/affiliate step 1)
+        ├── /api/outreach/send     -> Neon Postgres (records a send, advances the pipeline — no email is sent)
         ├── /api/webhooks/n8n/*    -> Neon Postgres (bulk prospect ingestion + batch)       [n8n-triggered]
-        ├── /api/ahrefs/lookup     -> Ahrefs API (optional domain metrics)
-        └── /api/auth/microsoft*   -> Microsoft identity platform (OAuth)
+        ├── /api/unsubscribe/[id]  -> Neon Postgres (public opt-out link)
+        └── /api/ahrefs/lookup     -> Ahrefs API (optional domain metrics)
               │
-              └── Neon (Postgres): prospects, prospect_batches, messages,
-                                     mailbox_connections, app_settings, activity_log
+              └── Neon (Postgres): prospects, prospect_batches, messages, app_settings, activity_log
 ```
 
-See `DEPLOY.md` for the full setup: Neon, Azure AD app registration for Outlook, Ahrefs (optional),
-Anthropic, n8n wiring, and Vercel deployment.
+See `DEPLOY.md` for the full setup: Neon, Anthropic, Ahrefs (optional), n8n (optional), and Vercel
+deployment.
 
 ## Local development
 
@@ -72,19 +73,19 @@ npm run dev
 # -> http://localhost:3000
 ```
 
-## Security notes (read before connecting a real mailbox)
+## Security notes
 
 This is built as an internal team tool, matching the permissive-access pattern already used in
 `PO-outreach-app` — there's no anon/browser DB client and no per-row security layer, only the trust
 boundary that `DATABASE_URL` is a server-only secret never sent to the browser, and there's no per-user
-login screen. That's fine behind Vercel's own deployment protection for a small internal team, but before
-wiring this to a real Outlook inbox and sending real email:
+login screen. That's fine behind Vercel's own deployment protection for a small internal team:
 
 - Turn on [Vercel Deployment Protection](https://vercel.com/docs/deployment-protection) (or put it behind
   SSO) so the app itself isn't publicly reachable.
-- `DATABASE_URL` and the Microsoft/Anthropic/Ahrefs keys are server-only env vars — never prefix them with
+- `DATABASE_URL` and the Anthropic/Ahrefs keys are server-only env vars — never prefix them with
   `NEXT_PUBLIC_` or reference them from a client component.
-- `/api/webhooks/n8n/prospects` and `/api/graph/sync` are the only two routes gated by a shared secret
-  (`N8N_WEBHOOK_SECRET`) because they're meant to be called from outside the app (by n8n). Every other API
-  route is open to anyone who can reach the deployment — tighten with real auth if this grows beyond a
-  couple of trusted teammates.
+- `/api/webhooks/n8n/prospects` is the only route gated by a shared secret (`N8N_WEBHOOK_SECRET`) because
+  it's meant to be called from outside the app (by n8n). Every other API route is open to anyone who can
+  reach the deployment — tighten with real auth if this grows beyond a couple of trusted teammates.
+- `/api/unsubscribe/[id]` is intentionally public with no auth — it's meant to be clicked from an email
+  client by someone who isn't logged into the app.

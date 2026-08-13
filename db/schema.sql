@@ -7,12 +7,13 @@
 create extension if not exists "pgcrypto";
 
 -- ============================================================
--- PROSPECT BATCHES — one row per bulk-import event (n8n webhook today).
--- Manually-added single prospects do NOT get a batch row.
+-- PROSPECT BATCHES — one row per bulk-import event (n8n webhook, or the
+-- Ahrefs-backed "Discover creators" search). Manually-added single
+-- prospects do NOT get a batch row.
 -- ============================================================
 create table if not exists prospect_batches (
   id                  uuid primary key default gen_random_uuid(),
-  source              text not null default 'n8n',   -- n8n | csv (future)
+  source              text not null default 'n8n',   -- n8n | discovery | csv (future)
   label               text,                           -- human label, e.g. "n8n: newsletter-sweep-workflow"
   source_ref          text,                            -- workflow name/run id, free text
   created_at          timestamptz default now()
@@ -49,7 +50,7 @@ create table if not exists prospects (
   organic_traffic_est int,               -- Ahrefs organic traffic estimate, if pulled
 
   -- Source
-  source              text default 'manual',   -- manual | n8n | ahrefs
+  source              text default 'manual',   -- manual | n8n | ahrefs | discovery
   source_ref          text,                    -- e.g. n8n workflow name/run id, or search query that surfaced them
   batch_id            uuid references prospect_batches(id) on delete set null,
 
@@ -62,18 +63,19 @@ create table if not exists prospects (
   -- Pipeline
   stage               text not null default 'new',
     -- new | researched | approved | reached_out | replied | in_discussion | partner_live | affiliate_active | stalled | pass
+    -- Every transition past "approved" is set manually by whoever is running outreach — the app does
+    -- not read anyone's inbox, so it can't detect a reply on its own.
 
   notes               text,
 
-  -- Opt-out — stops the automated follow-up sequence immediately (see
-  -- lib/outreachSend.ts). Set via the public /api/unsubscribe/[id] link
-  -- appended to every automated send, a "do not contact" reply during sync,
-  -- or a manual toggle on the prospect page.
+  -- Manual opt-out — someone told the sender directly not to contact them
+  -- again. Toggled by hand on the prospect page; also settable via the
+  -- public /api/unsubscribe/[id] link appended to every generated email.
+  -- Blocks drafting/recording further outreach to this prospect.
   unsubscribed        boolean not null default false,
   unsubscribed_at     timestamptz,
 
   last_contacted_at   timestamptz,
-  last_reply_at        timestamptz,
   created_at          timestamptz default now(),
   updated_at          timestamptz default now()
 );
@@ -85,58 +87,30 @@ create index if not exists prospects_batch_id_idx on prospects(batch_id);
 create unique index if not exists prospects_name_website_idx on prospects (lower(name), lower(coalesce(website, '')));
 
 -- ============================================================
--- MESSAGES — every outbound send + every inbound reply, one thread per prospect
+-- MESSAGES — a log of every outreach email generated/sent for a prospect.
+-- Outbound only — this app never reads a reply, so there is no inbound
+-- side to this table. Whoever sends manually marks it sent from the UI.
 -- ============================================================
 create table if not exists messages (
   id                  uuid primary key default gen_random_uuid(),
   prospect_id         uuid references prospects(id) on delete cascade,
 
-  direction           text not null,           -- outbound | inbound
+  direction           text not null default 'outbound',  -- always 'outbound' — kept for clarity/future-proofing
   subject             text,
-  body_html           text,
   body_text           text,
 
-  -- Only meaningful for outbound
   offer_type          text,                    -- webinar | co_branded_resource | newsletter_feature | dashboard_widget | email_blast | social_cross_promo | forum_takeover | affiliate_terms
-  sequence_step        int default 1,
+  sequence_step        int default 1,           -- 1 = initial, 2+ = a manually-generated follow-up
   ai_generated        boolean default false,
-  status              text default 'draft',    -- draft | sent | delivered | opened | replied | bounced | failed
+  status              text default 'sent',      -- draft | sent
 
-  -- Microsoft Graph identifiers (for thread monitoring/dedup)
-  ms_message_id       text,
-  ms_conversation_id  text,
-  from_address        text,
   to_address          text,
 
-  ai_classification    text,   -- interested | meeting_request | more_info | not_interested | do_not_contact | wrong_person | auto_reply (inbound only)
-  ai_confidence        numeric(3,2),
-  ai_suggested_response text,
-
   sent_at             timestamptz,
-  received_at         timestamptz,
   created_at          timestamptz default now()
 );
 
 create index if not exists messages_prospect_id_idx on messages(prospect_id);
-create index if not exists messages_conversation_idx on messages(ms_conversation_id);
-create unique index if not exists messages_ms_id_idx on messages (ms_message_id) where ms_message_id is not null;
-
--- ============================================================
--- MAILBOX CONNECTIONS — connected M365/Outlook mailboxes used for send + monitor
--- ============================================================
-create table if not exists mailbox_connections (
-  id                  uuid primary key default gen_random_uuid(),
-  label               text not null default 'Primary outreach inbox',
-  email               text,
-  ms365_user_id       text,
-  access_token        text,
-  refresh_token       text,
-  token_expires_at    timestamptz,
-  last_synced_at      timestamptz,
-  is_active           boolean default true,
-  created_at          timestamptz default now(),
-  updated_at          timestamptz default now()
-);
 
 -- ============================================================
 -- SETTINGS — single-row config: scoring weights, competitor blocklist, etc.
@@ -152,12 +126,12 @@ create table if not exists app_settings (
 insert into app_settings (id) values (1) on conflict (id) do nothing;
 
 -- ============================================================
--- ACTIVITY LOG — audit trail per prospect (stage changes, notes, syncs)
+-- ACTIVITY LOG — audit trail per prospect (stage changes, notes, sends)
 -- ============================================================
 create table if not exists activity_log (
   id                  uuid primary key default gen_random_uuid(),
   prospect_id         uuid references prospects(id) on delete cascade,
-  event_type          text not null,   -- stage_change | note | scored | disqualified | approved | email_sent | email_received | sync_error
+  event_type          text not null,   -- stage_change | note | scored | disqualified | approved | email_sent | unsubscribed
   detail              text,
   created_at          timestamptz default now()
 );
@@ -175,26 +149,37 @@ begin
 end;
 $$ language plpgsql;
 
+-- Postgres has no `create trigger if not exists`, so drop-then-create to
+-- keep this file safe to run repeatedly against the same database.
+drop trigger if exists update_prospects_updated_at on prospects;
 create trigger update_prospects_updated_at
   before update on prospects
-  for each row execute function update_updated_at_column();
-
-create trigger update_mailbox_connections_updated_at
-  before update on mailbox_connections
   for each row execute function update_updated_at_column();
 
 -- ============================================================
 -- Access control: this app talks to Neon only from server-side code
 -- (API routes) using DATABASE_URL, which is a server-only secret and is
 -- never sent to the browser. There is no anon/browser DB client and no
--- per-row security layer here — same trust model as the service-role key
--- had under Supabase, just without an RLS layer to configure.
+-- per-row security layer here.
 -- ============================================================
 
 -- ============================================================
--- Migration: niche + unsubscribe columns. Safe to re-run against a
--- database that already ran an earlier version of this file.
+-- Migration: bring an older (pre-cleanup) database up to this shape.
+-- Safe to re-run — every statement is conditional.
 -- ============================================================
 alter table prospects add column if not exists niche text;
 alter table prospects add column if not exists unsubscribed boolean not null default false;
 alter table prospects add column if not exists unsubscribed_at timestamptz;
+alter table prospects drop column if exists last_reply_at;
+
+alter table messages drop column if exists body_html;
+alter table messages drop column if exists ms_message_id;
+alter table messages drop column if exists ms_conversation_id;
+alter table messages drop column if exists from_address;
+alter table messages drop column if exists ai_classification;
+alter table messages drop column if exists ai_confidence;
+alter table messages drop column if exists ai_suggested_response;
+alter table messages drop column if exists received_at;
+
+drop trigger if exists update_mailbox_connections_updated_at on mailbox_connections;
+drop table if exists mailbox_connections;

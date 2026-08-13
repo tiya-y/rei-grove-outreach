@@ -3,13 +3,9 @@ import { sql } from '@/lib/db';
 
 export async function GET() {
   try {
-    const [[settings], [mailbox]] = await Promise.all([
-      sql`select * from app_settings where id = 1`,
-      sql`select id, label, email, last_synced_at, is_active, created_at from mailbox_connections where is_active = true`,
-    ]);
+    const [settings] = await sql`select * from app_settings where id = 1`;
     return NextResponse.json({
       settings: settings ?? { competitor_blocklist: [], scoring_weights: {} },
-      mailbox: mailbox ?? null,
       ahrefsEnabled: Boolean(process.env.AHREFS_API_KEY),
     });
   } catch (err) {
