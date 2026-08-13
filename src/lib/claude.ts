@@ -62,7 +62,7 @@ export async function generateOutreachEmail(ctx: OutreachContext): Promise<{ sub
   const isFollowUp = step > 1;
   const offer = ACTIVATION_CHANNELS.find((c) => c.key === ctx.offerType);
 
-  const prompt = `You are writing cold outreach on behalf of ${REI_GROVE_BRAND.name} (${REI_GROVE_BRAND.tagline}), ${REI_GROVE_BRAND.parentBrand}'s free real estate investor education hub, tool platform, and community.
+  const prompt = `You are writing cold outreach on behalf of ${REI_GROVE_BRAND.name} (${REI_GROVE_BRAND.tagline}), a free real estate investor education hub, tool platform, and community.
 
 BRAND VOICE: ${REI_GROVE_BRAND.personality} Tone: ${REI_GROVE_BRAND.tone}
 Audience REI Grove serves: ${REI_GROVE_BRAND.audience}

@@ -17,7 +17,7 @@ export default function Navigation() {
   return (
     <nav className="border-b bg-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <Link href="/" className="flex items-center gap-2" aria-label="REI Grove by Innago home">
+        <Link href="/" className="flex items-center gap-2" aria-label="REI Grove home">
           <Logo />
           <span className="text-sm text-gray-400">Outreach</span>
         </Link>

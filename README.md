@@ -26,7 +26,7 @@ so it stays accurate to REI Grove's current brand, tiers, and voice.
   `partner` prospects, and affiliate-prospector's channel-aware 100-point rubric (YouTube / Blog / Podcast
   / Newsletter) for `creator`/`affiliate` prospects — Claude can suggest dimension scores from pasted
   research notes, you review and edit before saving. Every new prospect (manual, n8n, or discovered) is
-  checked against the Ledgre/Innago competitor blocklist from partnership-prospector (extend the list in
+  checked against the competitor blocklist from partnership-prospector (extend the list in
   Settings without a redeploy). Once scored and qualified, **approve** a prospect to move it into Outreach.
 - **Outreach** — the initial email to a creator/affiliate prospect uses the team's fixed affiliate-offer
   template (compensation terms and links never drift); every other case (partner-type prospects, and any

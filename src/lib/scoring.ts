@@ -14,7 +14,7 @@
 // so the "why" is never lost.
 // ============================================================
 
-import { DEFAULT_COMPETITOR_BLOCKLIST, EXISTING_PRODUCT_PARTNERS } from './rei-grove-content';
+import { DEFAULT_COMPETITOR_BLOCKLIST } from './rei-grove-content';
 
 export type ProspectType = 'partner' | 'creator' | 'affiliate';
 
@@ -172,7 +172,6 @@ export function computeScore(
 export interface DisqualifierCheck {
   disqualified: boolean;
   reason?: string;
-  isExistingProductPartner?: boolean;
 }
 
 /**
@@ -193,9 +192,5 @@ export function checkDisqualifiers(
     }
   }
 
-  const isExistingProductPartner = EXISTING_PRODUCT_PARTNERS.some((partner) =>
-    haystack.includes(partner.toLowerCase())
-  );
-
-  return { disqualified: false, isExistingProductPartner };
+  return { disqualified: false };
 }

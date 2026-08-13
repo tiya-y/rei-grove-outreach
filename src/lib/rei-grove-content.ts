@@ -9,8 +9,6 @@
 
 export const REI_GROVE_BRAND = {
   name: 'REI Grove',
-  parentBrand: 'Innago',
-  formerName: 'Innago Insight',
   tagline: 'Grow together',
   supportEmail: 'help@reigrove.com',
   personality:
@@ -80,24 +78,13 @@ export const DEFAULT_COMPETITOR_BLOCKLIST = [
   { name: 'REI Hub', reason: 'Direct Ledgre competitor (rental accounting/bookkeeping)' },
   { name: 'Stessa', reason: 'Direct Ledgre competitor (rental accounting/bookkeeping)' },
   { name: 'RentRedi', reason: 'Direct Ledgre competitor overlap (financial features)' },
-  // Direct Innago competitors (property management software)
-  { name: 'TurboTenant', reason: 'Direct Innago competitor (property management software)' },
-  { name: 'Buildium', reason: 'Direct Innago competitor (property management software)' },
-  { name: 'AppFolio', reason: 'Direct Innago competitor (property management software)' },
-  { name: 'DoorLoop', reason: 'Direct Innago competitor (property management software)' },
-  { name: 'TenantCloud', reason: 'Direct Innago competitor (property management software)' },
-  { name: 'Avail', reason: 'Direct Innago competitor (property management software)' },
-];
-
-// Existing Innago product partners — not disqualified, but should be flagged
-// so they aren't pitched as a brand-new relationship.
-export const EXISTING_PRODUCT_PARTNERS = [
-  'Latchel',
-  'Steadily',
-  'Obie',
-  'Ledgre',
-  'PlacePay',
-  'Accelerent',
+  // Direct property management software competitors
+  { name: 'TurboTenant', reason: 'Direct competitor (property management software)' },
+  { name: 'Buildium', reason: 'Direct competitor (property management software)' },
+  { name: 'AppFolio', reason: 'Direct competitor (property management software)' },
+  { name: 'DoorLoop', reason: 'Direct competitor (property management software)' },
+  { name: 'TenantCloud', reason: 'Direct competitor (property management software)' },
+  { name: 'Avail', reason: 'Direct competitor (property management software)' },
 ];
 
 // Pre-loaded discovery keywords (from partnership-prospector + affiliate-prospector).

@@ -58,7 +58,7 @@ create table if not exists prospects (
   score               numeric,                 -- normalized 0-100
   score_breakdown     jsonb default '{}',       -- per-dimension scores + notes, channel-aware
   disqualified        boolean default false,
-  disqualify_reason   text,                     -- e.g. "Direct Ledgre competitor" / "Direct Innago competitor"
+  disqualify_reason   text,                     -- e.g. "Direct Ledgre competitor" / "Direct competitor (property management software)"
 
   -- Pipeline
   stage               text not null default 'new',
