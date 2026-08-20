@@ -37,7 +37,12 @@ function stripTrailingSlash(url: string) {
   return url.replace(/\/$/, '');
 }
 
-/** Domain Rating + organic traffic estimate for one or more domains (batch-analysis, mode=subdomains). */
+/**
+ * Domain Rating + organic traffic estimate for one or more domains
+ * (batch-analysis, mode=subdomains). Throws a specific error on request
+ * failure rather than silently returning nulls, which used to make a real
+ * API/auth problem look identical to "Ahrefs just has no data here."
+ */
 export async function getDomainMetrics(domains: string[]): Promise<DomainMetrics[]> {
   if (!ahrefsEnabled() || domains.length === 0) {
     return domains.map((domain) => ({ domain, domainRating: null, organicKeywords: null, organicTraffic: null }));
@@ -60,8 +65,8 @@ export async function getDomainMetrics(domains: string[]): Promise<DomainMetrics
         organicTraffic: row?.org_traffic ?? null,
       };
     });
-  } catch {
-    return domains.map((domain) => ({ domain, domainRating: null, organicKeywords: null, organicTraffic: null }));
+  } catch (err) {
+    throw new Error(ahrefsErrorMessage(err));
   }
 }
 
@@ -73,17 +78,27 @@ interface SerpPosition {
   domain_rating: number | null;
 }
 
-/** Top-ranking organic results for a keyword — used to source new prospects. */
-async function searchTopResultsForKeyword(keyword: string, country = 'us', topPositions = 15): Promise<SerpPosition[]> {
-  if (!ahrefsEnabled()) return [];
-  try {
-    const res = await ahrefsClient().get('/serp-overview', {
-      params: { keyword, country, type: 'organic', top_positions: topPositions, select: 'url,title,position,traffic,domain_rating' },
-    });
-    return res.data?.positions ?? [];
-  } catch {
-    return [];
+/** Formats an Ahrefs request failure with enough detail to actually debug it. */
+function ahrefsErrorMessage(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    const status = err.response?.status;
+    const data = err.response?.data;
+    const detail = typeof data === 'string' ? data : data ? JSON.stringify(data) : err.message;
+    return `Ahrefs ${status ?? 'request'} error: ${detail}`;
   }
+  return err instanceof Error ? err.message : 'Unknown Ahrefs error';
+}
+
+/**
+ * Top-ranking organic results for a keyword. Throws (with a real, specific
+ * message) on request failure rather than swallowing it — a silent [] here
+ * used to make every Ahrefs error look identical to "no results found."
+ */
+async function searchTopResultsForKeyword(keyword: string, country = 'us', topPositions = 15): Promise<SerpPosition[]> {
+  const res = await ahrefsClient().get('/serp-overview', {
+    params: { keyword, country, type: 'organic', top_positions: topPositions, select: 'url,title,position,traffic,domain_rating' },
+  });
+  return res.data?.positions ?? [];
 }
 
 export interface DiscoveredDomain {
@@ -135,34 +150,45 @@ function isBlockedPlatform(domain: string): boolean {
  * podcast vs. newsletter) isn't detectable from search rankings alone, so
  * everything lands tagged "blog" for you to reclassify.
  */
-export async function discoverDomainsForNiche(keywords: string[], targetCount: number): Promise<DiscoveredDomain[]> {
-  if (!ahrefsEnabled()) return [];
+export interface DiscoverDomainsResult {
+  candidates: DiscoveredDomain[];
+  errors: string[];
+}
+
+export async function discoverDomainsForNiche(keywords: string[], targetCount: number): Promise<DiscoverDomainsResult> {
+  if (!ahrefsEnabled()) return { candidates: [], errors: ['AHREFS_API_KEY is not configured.'] };
 
   const byDomain = new Map<string, { title: string | null; keyword: string; domainRating: number | null; traffic: number | null }>();
+  const errors: string[] = [];
 
   for (const keyword of keywords) {
-    const positions = await searchTopResultsForKeyword(keyword);
-    for (const pos of positions) {
-      const domain = domainFromUrl(pos.url);
-      if (!domain || byDomain.has(domain) || isBlockedPlatform(domain)) continue;
-      byDomain.set(domain, { title: pos.title, keyword, domainRating: pos.domain_rating, traffic: pos.traffic });
+    try {
+      const positions = await searchTopResultsForKeyword(keyword);
+      for (const pos of positions) {
+        const domain = domainFromUrl(pos.url);
+        if (!domain || byDomain.has(domain) || isBlockedPlatform(domain)) continue;
+        byDomain.set(domain, { title: pos.title, keyword, domainRating: pos.domain_rating, traffic: pos.traffic });
+      }
+    } catch (err) {
+      errors.push(`"${keyword}" — ${ahrefsErrorMessage(err)}`);
     }
   }
 
   const candidates = Array.from(byDomain.entries())
     .filter(([, info]) => (info.domainRating ?? 0) > 0)
     .sort((a, b) => (b[1].domainRating ?? 0) - (a[1].domainRating ?? 0))
-    .slice(0, targetCount);
+    .slice(0, targetCount)
+    .map(([domain, info]) => ({
+      name: nameFromDomain(domain),
+      domain,
+      website: domain,
+      contentPresence: info.title
+        ? `Ranks in Google search for "${info.keyword}" with the post "${info.title}" (Domain Rating ${info.domainRating}${info.traffic ? `, ~${info.traffic} est. monthly organic visits` : ''}).`
+        : `Ranks in Google search for "${info.keyword}" (Domain Rating ${info.domainRating}${info.traffic ? `, ~${info.traffic} est. monthly organic visits` : ''}).`,
+      domainRating: info.domainRating,
+    }));
 
-  return candidates.map(([domain, info]) => ({
-    name: nameFromDomain(domain),
-    domain,
-    website: domain,
-    contentPresence: info.title
-      ? `Ranks in Google search for "${info.keyword}" with the post "${info.title}" (Domain Rating ${info.domainRating}${info.traffic ? `, ~${info.traffic} est. monthly organic visits` : ''}).`
-      : `Ranks in Google search for "${info.keyword}" (Domain Rating ${info.domainRating}${info.traffic ? `, ~${info.traffic} est. monthly organic visits` : ''}).`,
-    domainRating: info.domainRating,
-  }));
+  return { candidates, errors };
 }
 
 export function isAhrefsEnabled() {

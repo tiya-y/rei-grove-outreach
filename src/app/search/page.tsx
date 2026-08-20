@@ -88,12 +88,9 @@ function SearchPageInner() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button className="btn-secondary" onClick={() => setDiscoverOpen((o) => !o)}>
-            Discover creators
+          <button className="btn-primary" onClick={() => setDiscoverOpen((o) => !o)}>
+            Search for prospects
           </button>
-          <Link href="/search/new" className="btn-primary">
-            + Add prospect
-          </Link>
         </div>
       </div>
 

@@ -22,7 +22,12 @@ export async function POST(req: NextRequest) {
   if (!prospect.website) return NextResponse.json({ error: 'Prospect has no website on file' }, { status: 400 });
 
   const domain = prospect.website.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-  const [metrics] = await getDomainMetrics([domain]);
+  let metrics;
+  try {
+    [metrics] = await getDomainMetrics([domain]);
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Ahrefs lookup failed' }, { status: 502 });
+  }
 
   try {
     const [updated] = await sql`

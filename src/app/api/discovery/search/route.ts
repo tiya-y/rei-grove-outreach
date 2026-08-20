@@ -19,14 +19,12 @@ export async function POST(req: NextRequest) {
   const niche = CREATOR_DISCOVERY_NICHES.find((n) => n.key === nicheKey);
   if (!niche) return NextResponse.json({ error: 'Unknown niche' }, { status: 400 });
 
-  let candidates;
-  try {
-    candidates = await discoverDomainsForNiche(niche.keywords, niche.targetCount);
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Discovery search failed' }, { status: 500 });
-  }
+  const { candidates, errors } = await discoverDomainsForNiche(niche.keywords, niche.targetCount);
 
   if (candidates.length === 0) {
+    if (errors.length > 0) {
+      return NextResponse.json({ error: errors.join(' | ') }, { status: 502 });
+    }
     return NextResponse.json({ results: [], created: 0, batchId: null, message: 'No verifiable sites found for this niche this run — try again later.' });
   }
 
