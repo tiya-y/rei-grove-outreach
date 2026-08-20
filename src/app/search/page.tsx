@@ -29,6 +29,7 @@ function SearchPageInner() {
   const [search, setSearch] = useState('');
   const [discoverOpen, setDiscoverOpen] = useState(false);
   const [discoverNiche, setDiscoverNiche] = useState(CREATOR_DISCOVERY_NICHES[0].key);
+  const [resultType, setResultType] = useState<'all' | 'organic' | 'video' | 'discussion'>('all');
   const [discovering, setDiscovering] = useState(false);
 
   async function runDiscovery() {
@@ -37,14 +38,14 @@ function SearchPageInner() {
       const res = await fetch('/api/discovery/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nicheKey: discoverNiche }),
+        body: JSON.stringify({ nicheKey: discoverNiche, resultType }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       if (json.created > 0) {
-        toast.success(`Found ${json.created} new creator${json.created === 1 ? '' : 's'} — added to Prospect Search.`);
+        toast.success(`Found ${json.created} new prospect${json.created === 1 ? '' : 's'} — added to Prospect Search.`);
       } else {
-        toast(json.message ?? 'No new creators found this run — everyone found already exists or was disqualified.');
+        toast(json.message ?? 'No new prospects found this run — everyone found already exists or was disqualified.');
       }
       refresh();
     } catch (err) {
@@ -96,11 +97,11 @@ function SearchPageInner() {
 
       {discoverOpen && (
         <div className="card space-y-3">
-          <h2 className="font-semibold text-gray-900">Discover creators</h2>
+          <h2 className="font-semibold text-gray-900">Search for prospects</h2>
           <p className="text-sm text-gray-500">
-            Uses Ahrefs to find real, currently-ranking sites for the niche below (no guessing or invented names) and adds any new
-            ones as prospects tagged &quot;blog&quot; by default for you to reclassify and review. Requires an Ahrefs API key. Content
-            quality and format vary run to run and won&apos;t always hit the target count exactly.
+            Uses Ahrefs to find real, currently-ranking websites, YouTube videos, or forum threads for the niche below (no guessing
+            or invented names) and adds any new ones as prospects for you to review and reclassify. Requires an Ahrefs API key.
+            Content quality and format vary run to run and won&apos;t always hit the target count exactly.
           </p>
           <div className="flex flex-wrap items-end gap-3">
             <div>
@@ -113,8 +114,17 @@ function SearchPageInner() {
                 ))}
               </select>
             </div>
+            <div>
+              <label className="label">Where to look</label>
+              <select className="input" value={resultType} onChange={(e) => setResultType(e.target.value as typeof resultType)}>
+                <option value="all">All (websites, videos, forums)</option>
+                <option value="organic">Websites &amp; blogs</option>
+                <option value="video">YouTube videos</option>
+                <option value="discussion">Forums &amp; discussions</option>
+              </select>
+            </div>
             <button className="btn-primary" onClick={runDiscovery} disabled={discovering}>
-              {discovering ? 'Searching…' : 'Find creators'}
+              {discovering ? 'Searching…' : 'Find prospects'}
             </button>
           </div>
         </div>
