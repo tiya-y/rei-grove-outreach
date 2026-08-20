@@ -179,6 +179,8 @@ function isBlockedPlatform(domain: string): boolean {
 export interface DiscoverDomainsResult {
   candidates: DiscoveredDomain[];
   errors: string[];
+  /** Funnel counts so "no results" can say *why* instead of just that. */
+  debug: { rawPositions: number; droppedAsPlatform: number; droppedNoRating: number };
 }
 
 /**
@@ -205,23 +207,36 @@ export async function discoverDomainsForNiche(
   targetCount: number,
   resultType: DiscoveryResultType = 'all'
 ): Promise<DiscoverDomainsResult> {
-  if (!ahrefsEnabled()) return { candidates: [], errors: ['AHREFS_API_KEY is not configured.'] };
+  if (!ahrefsEnabled()) {
+    return { candidates: [], errors: ['AHREFS_API_KEY is not configured.'], debug: { rawPositions: 0, droppedAsPlatform: 0, droppedNoRating: 0 } };
+  }
 
   const byKey = new Map<
     string,
     { url: string; domain: string; title: string | null; keyword: string; domainRating: number | null; traffic: number | null; category: DiscoveredDomain['category'] }
   >();
   const errors: string[] = [];
+  let rawPositions = 0;
+  let droppedAsPlatform = 0;
+  let droppedNoRating = 0;
 
   for (const keyword of keywords) {
     try {
       const positions = await searchTopResultsForKeyword(keyword, resultType);
+      rawPositions += positions.length;
       for (const pos of positions) {
         const domain = domainFromUrl(pos.url);
         if (!domain) continue;
 
         const isVideo = isYouTube(domain);
-        if (!isVideo && isBlockedPlatform(domain)) continue;
+        if (!isVideo && isBlockedPlatform(domain)) {
+          droppedAsPlatform += 1;
+          continue;
+        }
+        if (!((pos.domain_rating ?? 0) > 0)) {
+          droppedNoRating += 1;
+          continue;
+        }
 
         const category: DiscoveredDomain['category'] = isVideo ? 'youtube' : pos.type?.includes('discussion') ? 'community' : 'blog';
         const key = isVideo ? pos.url : domain;
@@ -235,7 +250,6 @@ export async function discoverDomainsForNiche(
   }
 
   const candidates = Array.from(byKey.values())
-    .filter((info) => (info.domainRating ?? 0) > 0)
     .sort((a, b) => (b.domainRating ?? 0) - (a.domainRating ?? 0))
     .slice(0, targetCount)
     .map((info) => {
@@ -248,7 +262,7 @@ export async function discoverDomainsForNiche(
       return { name, domain: info.domain, website, category: info.category, contentPresence, domainRating: info.domainRating };
     });
 
-  return { candidates, errors };
+  return { candidates, errors, debug: { rawPositions, droppedAsPlatform, droppedNoRating } };
 }
 
 export function isAhrefsEnabled() {

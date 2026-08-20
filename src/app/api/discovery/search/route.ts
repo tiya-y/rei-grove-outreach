@@ -19,13 +19,17 @@ export async function POST(req: NextRequest) {
   const niche = CREATOR_DISCOVERY_NICHES.find((n) => n.key === nicheKey);
   if (!niche) return NextResponse.json({ error: 'Unknown niche' }, { status: 400 });
 
-  const { candidates, errors } = await discoverDomainsForNiche(niche.keywords, niche.targetCount, resultType ?? 'all');
+  const { candidates, errors, debug } = await discoverDomainsForNiche(niche.keywords, niche.targetCount, resultType ?? 'all');
 
   if (candidates.length === 0) {
     if (errors.length > 0) {
       return NextResponse.json({ error: errors.join(' | ') }, { status: 502 });
     }
-    return NextResponse.json({ results: [], created: 0, batchId: null, message: 'No verifiable sites found for this niche this run — try again later.' });
+    const message =
+      debug.rawPositions === 0
+        ? `Ahrefs returned zero results across all ${niche.keywords.length} keyword(s) for this niche — try a different "Where to look" filter.`
+        : `Checked ${debug.rawPositions} result(s) across ${niche.keywords.length} keyword(s): ${debug.droppedAsPlatform} were general platforms (Reddit, Wikipedia, etc.), ${debug.droppedNoRating} had no Domain Rating data. Nothing usable was left — try a different "Where to look" filter.`;
+    return NextResponse.json({ results: [], created: 0, batchId: null, message });
   }
 
   let settings;
