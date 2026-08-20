@@ -22,6 +22,11 @@ function ahrefsClient() {
     headers: {
       Authorization: `Bearer ${process.env.AHREFS_API_KEY}`,
       'Content-Type': 'application/json',
+      // Ahrefs' own example requests explicitly set this on GETs. Without it
+      // the API can return something axios doesn't auto-parse as JSON, so
+      // `res.data.positions` silently doesn't exist — no error, just an
+      // empty result, which is exactly the symptom that led here.
+      Accept: 'application/json',
     },
   });
 }
@@ -66,8 +71,12 @@ export async function getDomainMetrics(domains: string[]): Promise<DomainMetrics
     const res = await ahrefsClient().post('/batch-analysis/batch-analysis', {
       select: ['url', 'domain_rating', 'org_traffic', 'org_keywords'],
       targets: domains.map((domain) => ({ url: domain, mode: 'subdomains', protocol: 'both' })),
+      output: 'json',
     });
-    const rows = (res.data?.targets ?? []) as { url: string; domain_rating: number; org_traffic: number; org_keywords: number }[];
+    if (!res.data || !Array.isArray(res.data.targets)) {
+      throw new Error(`unexpected response shape (got ${typeof res.data}: ${JSON.stringify(res.data).slice(0, 200)})`);
+    }
+    const rows = res.data.targets as { url: string; domain_rating: number; org_traffic: number; org_keywords: number }[];
     return domains.map((domain) => {
       const row = rows.find((r) => stripTrailingSlash(r.url) === domain);
       return {
@@ -116,10 +125,14 @@ async function searchTopResultsForKeyword(keyword: string, resultType: Discovery
       country,
       top_positions: topPositions,
       select: 'url,title,position,traffic,domain_rating,type',
+      output: 'json',
       ...(type ? { type } : {}),
     },
   });
-  return res.data?.positions ?? [];
+  if (!res.data || !Array.isArray(res.data.positions)) {
+    throw new Error(`unexpected response shape (got ${typeof res.data}: ${JSON.stringify(res.data).slice(0, 200)})`);
+  }
+  return res.data.positions;
 }
 
 export interface DiscoveredDomain {
