@@ -132,6 +132,18 @@ async function searchTopResultsForKeyword(keyword: string, resultType: Discovery
   if (!res.data || !Array.isArray(res.data.positions)) {
     throw new Error(`unexpected response shape (got ${typeof res.data}: ${JSON.stringify(res.data).slice(0, 200)})`);
   }
+  // A genuinely-empty array here for a common keyword almost always means an
+  // account/plan/quota issue rather than "no data" — surface the raw body
+  // and any usage/limit headers instead of quietly returning [], since that
+  // silence is exactly what made this hard to diagnose the first two times.
+  if (res.data.positions.length === 0) {
+    const usageHeaders = Object.entries(res.headers ?? {}).filter(([k]) => /rate|limit|quota|usage|credit/i.test(k));
+    throw new Error(
+      `Ahrefs returned an empty positions array for "${keyword}" (this exact query has real data — verified separately). ` +
+        `Full response: ${JSON.stringify(res.data)}. ` +
+        `Usage/limit headers: ${usageHeaders.length ? JSON.stringify(Object.fromEntries(usageHeaders)) : 'none present'}.`
+    );
+  }
   return res.data.positions;
 }
 
@@ -170,19 +182,34 @@ function nameFromVideoTitle(title: string | null, domain: string): string {
   return cleaned.length > 60 ? `${cleaned.slice(0, 57)}...` : cleaned;
 }
 
-// General platforms, marketplaces, and mega-media sites that reliably rank
-// for informational real-estate/landlord queries but are never themselves a
-// "content creator" prospect. Filtered out before scoring/sorting candidates
-// — without this, results skew toward Reddit/BuzzFeed/Wikipedia/the
-// platforms themselves rather than the independent sites we actually want.
-// YouTube is deliberately not on this list — a specific video is exactly
-// the kind of creator result this search is for (handled separately below
-// since every video shares the youtube.com domain).
+// General platforms, marketplaces, mega-media, and generic web
+// infrastructure that reliably show up in both SERP results and backlink
+// profiles but are never themselves a "creator"/partnership prospect.
+// Filtered out before scoring/sorting candidates. The infra half of this
+// list (WordPress, GitHub, Shopify, etc.) came directly out of a real test:
+// pulling BiggerPockets' backlinks sorted by Domain Rating surfaced almost
+// nothing but google.com/youtube.com/wordpress.org/github.com/apple.com —
+// generic "powered by" and badge links every established site accumulates,
+// not partnership-relevant sites. YouTube is deliberately not on this list
+// — a specific video is exactly the kind of creator result this search is
+// for (handled separately since every video shares the youtube.com domain).
 const PLATFORM_DOMAIN_BLOCKLIST = [
+  // Social/community platforms and mega-media
   'reddit.com', 'quora.com', 'pinterest.com', 'facebook.com', 'instagram.com', 'tiktok.com',
   'linkedin.com', 'twitter.com', 'x.com', 'medium.com', 'wikihow.com', 'wikipedia.org',
   'buzzfeed.com', 'forbes.com', 'businessinsider.com', 'nerdwallet.com', 'investopedia.com',
   'amazon.com', 'google.com', 'bing.com', 'yahoo.com', 'airbnb.com', 'vrbo.com', 'yelp.com', 'nytimes.com',
+  // Generic web infrastructure / CMS / dev / creative tools — these show up
+  // as high-DR "backlinks" to almost any site regardless of topic.
+  'wordpress.com', 'wordpress.org', 'squarespace.com', 'wix.com', 'webflow.com', 'godaddy.com',
+  'github.com', 'gitlab.com', 'bitbucket.org', 'netlify.com', 'vercel.com', 'herokuapp.com',
+  'adobe.com', 'canva.com', 'vimeo.com', 'spotify.com', 'soundcloud.com', 'apple.com', 'microsoft.com',
+  'gravatar.com', 'goo.gl', 'bit.ly', 'tinyurl.com',
+  // Generic directories/review sites, not partnership-relevant
+  'bbb.org', 'crunchbase.com', 'glassdoor.com', 'indeed.com',
+  // REI Grove's own parent company — never a useful "reference domain" or
+  // "prospect" suggestion in its own discovery tool.
+  'innago.com',
 ];
 
 function isBlockedPlatform(domain: string): boolean {
@@ -276,6 +303,101 @@ export async function discoverDomainsForNiche(
     });
 
   return { candidates, errors, debug: { rawPositions, droppedAsPlatform, droppedNoRating } };
+}
+
+// ── Backlink-based partnership discovery ────────────────────────────────────
+// A different angle from keyword search: domains that already link to a
+// comparable real-estate-education resource (e.g. BiggerPockets) are
+// natural partnership/affiliate targets, since they're already engaging
+// with similar content.
+
+interface RefDomainRow {
+  domain: string;
+  domain_rating: number;
+  traffic_domain: number;
+}
+
+/**
+ * Domains linking to `targetDomain`, sorted by Domain Rating. Real path:
+ * /v3/site-explorer/refdomains — note this is "refdomains," not
+ * "referring-domains" (confirmed against Ahrefs' docs; the tool/concept
+ * name and the REST path segment don't always match).
+ */
+export async function getReferringDomains(targetDomain: string, limit = 50): Promise<DiscoveredDomain[]> {
+  if (!ahrefsEnabled()) return [];
+
+  let rows: RefDomainRow[];
+  try {
+    const res = await ahrefsClient().get('/site-explorer/refdomains', {
+      params: {
+        target: targetDomain,
+        mode: 'subdomains',
+        select: 'domain,domain_rating,traffic_domain',
+        order_by: 'domain_rating:desc',
+        limit,
+        output: 'json',
+      },
+    });
+    if (!res.data || !Array.isArray(res.data.refdomains)) {
+      throw new Error(`unexpected response shape (got ${typeof res.data}: ${JSON.stringify(res.data).slice(0, 200)})`);
+    }
+    rows = res.data.refdomains;
+  } catch (err) {
+    throw new Error(ahrefsErrorMessage(err));
+  }
+
+  return rows
+    .filter((r) => r.domain !== targetDomain && (r.domain_rating ?? 0) > 0 && !isBlockedPlatform(r.domain))
+    .map((r) => ({
+      name: nameFromDomain(r.domain),
+      domain: r.domain,
+      website: r.domain,
+      category: 'blog' as const,
+      contentPresence: `Links to ${targetDomain} (Domain Rating ${r.domain_rating}${r.traffic_domain ? `, ~${r.traffic_domain} est. monthly organic visits` : ''}).`,
+      domainRating: r.domain_rating,
+    }));
+}
+
+export interface CompetitorDomain {
+  domain: string;
+  domainRating: number | null;
+  traffic: number | null;
+}
+
+/**
+ * Real, currently-active organic search competitors of `targetDomain` — a
+ * "find more reference domains" helper for the backlinks search above, not
+ * a prospect source itself. Real path: /v3/site-explorer/organic-competitors.
+ */
+export async function getOrganicCompetitors(targetDomain: string, limit = 10): Promise<CompetitorDomain[]> {
+  if (!ahrefsEnabled()) return [];
+
+  const today = new Date().toISOString().slice(0, 10);
+  let rows: { competitor_domain: string | null; domain_rating: number; traffic: number | null }[];
+  try {
+    const res = await ahrefsClient().get('/site-explorer/organic-competitors', {
+      params: {
+        target: targetDomain,
+        mode: 'subdomains',
+        country: 'us',
+        date: today,
+        select: 'competitor_domain,domain_rating,traffic',
+        order_by: 'domain_rating:desc',
+        limit,
+        output: 'json',
+      },
+    });
+    if (!res.data || !Array.isArray(res.data.competitors)) {
+      throw new Error(`unexpected response shape (got ${typeof res.data}: ${JSON.stringify(res.data).slice(0, 200)})`);
+    }
+    rows = res.data.competitors;
+  } catch (err) {
+    throw new Error(ahrefsErrorMessage(err));
+  }
+
+  return rows
+    .filter((r) => r.competitor_domain && !isBlockedPlatform(r.competitor_domain))
+    .map((r) => ({ domain: r.competitor_domain as string, domainRating: r.domain_rating ?? null, traffic: r.traffic ?? null }));
 }
 
 export function isAhrefsEnabled() {

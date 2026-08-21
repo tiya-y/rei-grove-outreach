@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
 import { discoverDomainsForNiche, isAhrefsEnabled, type DiscoveryResultType } from '@/lib/ahrefs';
-import { checkDisqualifiers } from '@/lib/scoring';
+import { insertDiscoveredCandidates } from '@/lib/discoveryInsert';
 import { CREATOR_DISCOVERY_NICHES } from '@/lib/rei-grove-content';
 
 // POST /api/discovery/search — Body: { nicheKey, resultType? }
@@ -32,51 +31,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ results: [], created: 0, batchId: null, message });
   }
 
-  let settings;
   try {
-    [settings] = await sql`select competitor_blocklist from app_settings where id = 1`;
+    const { results, created, batchId } = await insertDiscoveredCandidates(
+      candidates,
+      `Discovery: ${niche.label}`,
+      niche.key,
+      niche.key,
+      'ahrefs serp'
+    );
+    return NextResponse.json({ results, created, batchId });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Query failed' }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to save results' }, { status: 500 });
   }
-  const extraBlocklist = (settings?.competitor_blocklist ?? []) as { name: string; reason: string }[];
-
-  const results: { name: string; status: 'created' | 'skipped_duplicate' | 'error'; reason?: string }[] = [];
-  let batchId: string | null = null;
-
-  for (const c of candidates) {
-    try {
-      const [dupe] = await sql`select id from prospects where name ilike ${c.name} or website ilike ${c.website} limit 1`;
-      if (dupe) {
-        results.push({ name: c.name, status: 'skipped_duplicate' });
-        continue;
-      }
-
-      const dq = checkDisqualifiers({ name: c.name, website: c.website }, extraBlocklist);
-
-      if (!batchId) {
-        const [batch] = await sql`
-          insert into prospect_batches (source, label, source_ref)
-          values ('discovery', ${`Discovery: ${niche.label}`}, ${niche.key})
-          returning id
-        `;
-        batchId = batch.id;
-      }
-
-      await sql`
-        insert into prospects (
-          prospect_type, name, website, category, niche, content_presence,
-          source, source_ref, batch_id, disqualified, disqualify_reason, stage
-        ) values (
-          'creator', ${c.name}, ${c.website}, ${c.category}, ${niche.key}, ${c.contentPresence},
-          'discovery', ${'ahrefs serp'}, ${batchId},
-          ${dq.disqualified}, ${dq.reason ?? null}, ${dq.disqualified ? 'pass' : 'new'}
-        )
-      `;
-      results.push({ name: c.name, status: 'created', reason: dq.disqualified ? dq.reason : undefined });
-    } catch (err) {
-      results.push({ name: c.name, status: 'error', reason: err instanceof Error ? err.message : 'Insert failed' });
-    }
-  }
-
-  return NextResponse.json({ results, created: results.filter((r) => r.status === 'created').length, batchId });
 }
