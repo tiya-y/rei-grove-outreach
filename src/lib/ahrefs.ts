@@ -156,7 +156,7 @@ export interface DiscoveredDomain {
   domainRating: number | null;
 }
 
-function domainFromUrl(url: string): string | null {
+export function domainFromUrl(url: string): string | null {
   try {
     return new URL(url).hostname.replace(/^www\./, '');
   } catch {

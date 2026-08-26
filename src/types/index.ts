@@ -111,7 +111,7 @@ export interface Message {
 
 export interface ProspectBatch {
   id: string;
-  source: 'n8n' | 'csv' | 'discovery';
+  source: 'n8n' | 'csv' | 'discovery' | 'manual';
   label: string | null;
   source_ref: string | null;
   created_at: string;

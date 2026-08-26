@@ -37,7 +37,8 @@ export async function POST(req: NextRequest) {
       `Discovery: ${niche.label}`,
       niche.key,
       niche.key,
-      'ahrefs serp'
+      'ahrefs serp',
+      'discovery'
     );
     return NextResponse.json({ results, created, batchId });
   } catch (err) {

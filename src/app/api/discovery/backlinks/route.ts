@@ -51,7 +51,8 @@ export async function POST(req: NextRequest) {
       `Backlinks: ${domain}`,
       domain,
       niche?.key ?? null,
-      `ahrefs backlinks (${domain})`
+      `ahrefs backlinks (${domain})`,
+      'discovery'
     );
     return NextResponse.json({ results, created, batchId });
   } catch (err) {

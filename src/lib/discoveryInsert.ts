@@ -1,14 +1,26 @@
 // ============================================================
 // Shared "dedupe, batch, insert" loop used by every discovery source
-// (keyword SERP search, backlink search, and previously the n8n webhook's
-// own copy of this logic) so new prospects always land the same way: one
+// (keyword SERP search, backlink search, YouTube Data API search, and
+// manual paste import) so new prospects always land the same way: one
 // prospect_batches row per run, checked against the competitor blocklist,
 // deduped against existing prospects by name/website.
 // ============================================================
 
 import { sql } from './db';
 import { checkDisqualifiers } from './scoring';
-import type { DiscoveredDomain } from './ahrefs';
+
+// Structurally compatible with ahrefs.ts's DiscoveredDomain (its narrower
+// `category` union satisfies `string` here) — kept separate so this file
+// doesn't need to know about Ahrefs specifically.
+export interface DiscoveryCandidate {
+  name: string;
+  domain: string | null;
+  website: string | null;
+  category: string | null;
+  contentPresence: string;
+  domainRating?: number | null;
+  audienceSizeEst?: number | null;
+}
 
 export interface InsertDiscoveredResult {
   results: { name: string; status: 'created' | 'skipped_duplicate' | 'error'; reason?: string }[];
@@ -17,11 +29,12 @@ export interface InsertDiscoveredResult {
 }
 
 export async function insertDiscoveredCandidates(
-  candidates: DiscoveredDomain[],
+  candidates: DiscoveryCandidate[],
   batchLabel: string,
   batchSourceRef: string | null,
   nicheKey: string | null,
-  sourceRefTag: string
+  sourceRefTag: string,
+  source: string
 ): Promise<InsertDiscoveredResult> {
   const [settings] = await sql`select competitor_blocklist from app_settings where id = 1`;
   const extraBlocklist = (settings?.competitor_blocklist ?? []) as { name: string; reason: string }[];
@@ -42,7 +55,7 @@ export async function insertDiscoveredCandidates(
       if (!batchId) {
         const [batch] = await sql`
           insert into prospect_batches (source, label, source_ref)
-          values ('discovery', ${batchLabel}, ${batchSourceRef})
+          values (${source}, ${batchLabel}, ${batchSourceRef})
           returning id
         `;
         batchId = batch.id;
@@ -50,11 +63,11 @@ export async function insertDiscoveredCandidates(
 
       await sql`
         insert into prospects (
-          prospect_type, name, website, category, niche, content_presence,
+          prospect_type, name, website, category, niche, content_presence, audience_size_est,
           source, source_ref, batch_id, disqualified, disqualify_reason, stage
         ) values (
-          'creator', ${c.name}, ${c.website}, ${c.category}, ${nicheKey}, ${c.contentPresence},
-          'discovery', ${sourceRefTag}, ${batchId},
+          'creator', ${c.name}, ${c.website}, ${c.category}, ${nicheKey}, ${c.contentPresence}, ${c.audienceSizeEst ?? null},
+          ${source}, ${sourceRefTag}, ${batchId},
           ${dq.disqualified}, ${dq.reason ?? null}, ${dq.disqualified ? 'pass' : 'new'}
         )
       `;

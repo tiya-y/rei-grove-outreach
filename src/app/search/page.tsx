@@ -34,7 +34,7 @@ function SearchPageInner() {
   const [typeFilter, setTypeFilter] = useState<'all' | Prospect['prospect_type']>('all');
   const [search, setSearch] = useState('');
   const [discoverOpen, setDiscoverOpen] = useState(false);
-  const [discoverMode, setDiscoverMode] = useState<'keyword' | 'backlinks'>('keyword');
+  const [discoverMode, setDiscoverMode] = useState<'keyword' | 'backlinks' | 'youtube' | 'import'>('keyword');
 
   // Keyword mode
   const [discoverNiche, setDiscoverNiche] = useState(CREATOR_DISCOVERY_NICHES[0].key);
@@ -47,6 +47,16 @@ function SearchPageInner() {
   const [findingCompetitors, setFindingCompetitors] = useState(false);
   const [competitorSuggestions, setCompetitorSuggestions] = useState<CompetitorSuggestion[]>([]);
   const [findingBacklinks, setFindingBacklinks] = useState(false);
+
+  // YouTube channels mode
+  const [youtubeNiche, setYoutubeNiche] = useState(CREATOR_DISCOVERY_NICHES[0].key);
+  const [findingYoutube, setFindingYoutube] = useState(false);
+
+  // Import mode (paste results from Heepsy, Google Ads, or other manual research)
+  const [importText, setImportText] = useState('');
+  const [importSourceLabel, setImportSourceLabel] = useState('Heepsy');
+  const [importNiche, setImportNiche] = useState('');
+  const [importing, setImporting] = useState(false);
 
   async function runDiscovery() {
     setDiscovering(true);
@@ -116,6 +126,53 @@ function SearchPageInner() {
     }
   }
 
+  async function runYoutubeDiscovery() {
+    setFindingYoutube(true);
+    try {
+      const res = await fetch('/api/discovery/youtube', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nicheKey: youtubeNiche }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      if (json.created > 0) {
+        toast.success(`Found ${json.created} new channel${json.created === 1 ? '' : 's'} — added to Prospect Search.`);
+      } else {
+        toast(json.message ?? 'No new channels found this run — everyone found already exists or was disqualified.');
+      }
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'YouTube search failed');
+    } finally {
+      setFindingYoutube(false);
+    }
+  }
+
+  async function runImport() {
+    setImporting(true);
+    try {
+      const res = await fetch('/api/discovery/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: importText, sourceLabel: importSourceLabel, nicheKey: importNiche || undefined }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      if (json.created > 0) {
+        toast.success(`Added ${json.created} new prospect${json.created === 1 ? '' : 's'} — imported from ${importSourceLabel}.`);
+        setImportText('');
+      } else {
+        toast(json.message ?? 'Nothing new added — everyone in the list already exists or was disqualified.');
+      }
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Import failed');
+    } finally {
+      setImporting(false);
+    }
+  }
+
   const prospects = useMemo(() => {
     let list = data?.prospects ?? [];
     if (batchId) {
@@ -158,7 +215,7 @@ function SearchPageInner() {
 
       {discoverOpen && (
         <div className="card space-y-4">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               className={discoverMode === 'keyword' ? 'btn-primary' : 'btn-secondary'}
               onClick={() => setDiscoverMode('keyword')}
@@ -170,6 +227,18 @@ function SearchPageInner() {
               onClick={() => setDiscoverMode('backlinks')}
             >
               Competitor backlinks
+            </button>
+            <button
+              className={discoverMode === 'youtube' ? 'btn-primary' : 'btn-secondary'}
+              onClick={() => setDiscoverMode('youtube')}
+            >
+              YouTube channels
+            </button>
+            <button
+              className={discoverMode === 'import' ? 'btn-primary' : 'btn-secondary'}
+              onClick={() => setDiscoverMode('import')}
+            >
+              Add from research
             </button>
           </div>
 
@@ -205,7 +274,7 @@ function SearchPageInner() {
                 </button>
               </div>
             </>
-          ) : (
+          ) : discoverMode === 'backlinks' ? (
             <>
               <p className="text-sm text-gray-500">
                 Finds real sites that already link to a comparable real-estate resource (e.g. BiggerPockets) using Ahrefs&apos;
@@ -254,6 +323,67 @@ function SearchPageInner() {
                 </div>
               )}
             </>
+          ) : discoverMode === 'youtube' ? (
+            <>
+              <p className="text-sm text-gray-500">
+                Searches YouTube directly (not Ahrefs) for real channels matching the niche below — a free, separate source from
+                the &quot;YouTube videos&quot; option under Keyword search, which finds individual videos ranking in Google search
+                rather than channels.
+              </p>
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="label">Niche</label>
+                  <select className="input min-w-[22rem]" value={youtubeNiche} onChange={(e) => setYoutubeNiche(e.target.value)}>
+                    {CREATOR_DISCOVERY_NICHES.map((n) => (
+                      <option key={n.key} value={n.key}>
+                        {n.label} — target {n.targetCount} ({n.affiliateFitNote})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button className="btn-primary" onClick={runYoutubeDiscovery} disabled={findingYoutube}>
+                  {findingYoutube ? 'Searching…' : 'Find channels'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-gray-500">
+                For creators you found by browsing Heepsy, Google Ads → Tools → YouTube Creator Partnerships, or anywhere else with
+                no public API — paste one prospect per line as <code className="rounded bg-gray-100 px-1">Name, link</code> and
+                they&apos;ll go through the same duplicate/blocklist check as every other source.
+              </p>
+              <textarea
+                className="input min-h-[8rem] w-full font-mono text-xs"
+                placeholder={'Jane Smith, https://youtube.com/@janesmith\nJohn Doe Realty Blog, https://johndoerealty.com'}
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+              />
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="label">Where did you find these?</label>
+                  <select className="input min-w-[16rem]" value={importSourceLabel} onChange={(e) => setImportSourceLabel(e.target.value)}>
+                    <option value="Heepsy">Heepsy</option>
+                    <option value="Google Ads YouTube Creator Partnerships">Google Ads → YouTube Creator Partnerships</option>
+                    <option value="Other manual research">Other manual research</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Tag with niche (optional)</label>
+                  <select className="input min-w-[18rem]" value={importNiche} onChange={(e) => setImportNiche(e.target.value)}>
+                    <option value="">No niche tag</option>
+                    {CREATOR_DISCOVERY_NICHES.map((n) => (
+                      <option key={n.key} value={n.key}>
+                        {n.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button className="btn-primary" onClick={runImport} disabled={importing || !importText.trim()}>
+                  {importing ? 'Adding…' : 'Add prospects'}
+                </button>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -261,16 +391,23 @@ function SearchPageInner() {
       <div className="card space-y-2">
         <h2 className="text-sm font-semibold text-gray-900">Other places to look</h2>
         <p className="text-sm text-gray-500">
-          Not automated here — no public API for either of these, so they need a person browsing manually:
+          No public API for any of these, so they need a person browsing manually — once you have results, paste them into the
+          &quot;Add from research&quot; tab above and they&apos;ll flow into the same pipeline as everything else.
         </p>
         <ul className="list-disc space-y-1 pl-5 text-sm text-gray-500">
           <li>
-            <strong className="text-gray-700">Paywalled creator/influencer databases</strong> — e.g. Favikon, Collabstr. Subscription
-            tools for searching real estate content creators directly by niche/follower count.
+            <strong className="text-gray-700">Heepsy</strong> — you have an account for this one. Search real estate creators,
+            export/copy results, then paste them into &quot;Add from research.&quot;
           </li>
           <li>
-            <strong className="text-gray-700">Google Ads → Tools → YouTube Creator Partnerships</strong> (Google&apos;s
-            BrandConnect hub) — log into Innago&apos;s Google Ads account to browse/search YouTube creators by niche and audience.
+            <strong className="text-gray-700">Google Ads → Tools → YouTube Creator Partnerships</strong> — log into the shared
+            Google Ads account to browse YouTube creators by niche and audience, then paste results in the same way.
+          </li>
+          <li>
+            <strong className="text-gray-700">Other paywalled creator/influencer databases</strong> — Favikon, Collabstr,
+            Ainfluencer, GRIN, CreatorIQ, Traackr, and Modash all let you filter by niche/follower count; none have a public API,
+            but Modash and Influencers.Club also publish free browsable &quot;top real estate creators&quot; lists with no login
+            required.
           </li>
         </ul>
       </div>
