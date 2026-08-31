@@ -20,6 +20,7 @@ export interface DiscoveryCandidate {
   contentPresence: string;
   domainRating?: number | null;
   audienceSizeEst?: number | null;
+  email?: string | null;
 }
 
 export interface InsertDiscoveredResult {
@@ -63,10 +64,10 @@ export async function insertDiscoveredCandidates(
 
       await sql`
         insert into prospects (
-          prospect_type, name, website, category, niche, content_presence, audience_size_est,
+          prospect_type, name, email, website, category, niche, content_presence, audience_size_est,
           source, source_ref, batch_id, disqualified, disqualify_reason, stage
         ) values (
-          'creator', ${c.name}, ${c.website}, ${c.category}, ${nicheKey}, ${c.contentPresence}, ${c.audienceSizeEst ?? null},
+          'creator', ${c.name}, ${c.email ?? null}, ${c.website}, ${c.category}, ${nicheKey}, ${c.contentPresence}, ${c.audienceSizeEst ?? null},
           ${source}, ${sourceRefTag}, ${batchId},
           ${dq.disqualified}, ${dq.reason ?? null}, ${dq.disqualified ? 'pass' : 'new'}
         )

@@ -53,7 +53,10 @@ function SearchPageInner() {
   const [findingYoutube, setFindingYoutube] = useState(false);
 
   // Import mode (paste results from Heepsy, Google Ads, or other manual research)
+  const [importMethod, setImportMethod] = useState<'paste' | 'csv'>('paste');
   const [importText, setImportText] = useState('');
+  const [importCsvText, setImportCsvText] = useState('');
+  const [importCsvFileName, setImportCsvFileName] = useState('');
   const [importSourceLabel, setImportSourceLabel] = useState('Heepsy');
   const [importNiche, setImportNiche] = useState('');
   const [importing, setImporting] = useState(false);
@@ -149,19 +152,40 @@ function SearchPageInner() {
     }
   }
 
+  async function handleCsvFileSelect(file: File | undefined) {
+    if (!file) return;
+    setImportCsvFileName(file.name);
+    setImportCsvText(await file.text());
+  }
+
   async function runImport() {
+    const usingCsv = importMethod === 'csv';
+    if (usingCsv && !importCsvText.trim()) {
+      toast.error('Choose a CSV file first.');
+      return;
+    }
+    if (!usingCsv && !importText.trim()) {
+      toast.error('Paste at least one prospect first.');
+      return;
+    }
     setImporting(true);
     try {
       const res = await fetch('/api/discovery/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: importText, sourceLabel: importSourceLabel, nicheKey: importNiche || undefined }),
+        body: JSON.stringify(
+          usingCsv
+            ? { csv: importCsvText, sourceLabel: importSourceLabel, nicheKey: importNiche || undefined }
+            : { text: importText, sourceLabel: importSourceLabel, nicheKey: importNiche || undefined }
+        ),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       if (json.created > 0) {
         toast.success(`Added ${json.created} new prospect${json.created === 1 ? '' : 's'} — imported from ${importSourceLabel}.`);
         setImportText('');
+        setImportCsvText('');
+        setImportCsvFileName('');
       } else {
         toast(json.message ?? 'Nothing new added — everyone in the list already exists or was disqualified.');
       }
@@ -350,15 +374,57 @@ function SearchPageInner() {
             <>
               <p className="text-sm text-gray-500">
                 For creators you found by browsing Heepsy, Google Ads → Tools → YouTube Creator Partnerships, or anywhere else with
-                no public API — paste one prospect per line as <code className="rounded bg-gray-100 px-1">Name, link</code> and
-                they&apos;ll go through the same duplicate/blocklist check as every other source.
+                no public API. Both options below go through the same duplicate/blocklist check as every other source.
               </p>
-              <textarea
-                className="input min-h-[8rem] w-full font-mono text-xs"
-                placeholder={'Jane Smith, https://youtube.com/@janesmith\nJohn Doe Realty Blog, https://johndoerealty.com'}
-                value={importText}
-                onChange={(e) => setImportText(e.target.value)}
-              />
+              <div className="flex gap-2">
+                <button
+                  className={importMethod === 'paste' ? 'btn-primary' : 'btn-secondary'}
+                  onClick={() => setImportMethod('paste')}
+                >
+                  Paste list
+                </button>
+                <button
+                  className={importMethod === 'csv' ? 'btn-primary' : 'btn-secondary'}
+                  onClick={() => setImportMethod('csv')}
+                >
+                  Upload CSV (Heepsy export)
+                </button>
+              </div>
+
+              {importMethod === 'paste' ? (
+                <>
+                  <p className="text-xs text-gray-400">
+                    One prospect per line as <code className="rounded bg-gray-100 px-1">Name, link</code> — paste as many lines at
+                    once as you want.
+                  </p>
+                  <textarea
+                    className="input min-h-[8rem] w-full font-mono text-xs"
+                    placeholder={'Jane Smith, https://youtube.com/@janesmith\nJohn Doe Realty Blog, https://johndoerealty.com'}
+                    value={importText}
+                    onChange={(e) => setImportText(e.target.value)}
+                  />
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-gray-400">
+                    Export your Heepsy search results as CSV, then choose the file below. Name/link/email/follower columns are
+                    detected automatically — exact column names can vary by export.
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <label className="btn-secondary cursor-pointer">
+                      Choose CSV file
+                      <input
+                        type="file"
+                        accept=".csv,text/csv"
+                        className="hidden"
+                        onChange={(e) => handleCsvFileSelect(e.target.files?.[0])}
+                      />
+                    </label>
+                    {importCsvFileName && <span className="text-sm text-gray-600">{importCsvFileName}</span>}
+                  </div>
+                </>
+              )}
+
               <div className="flex flex-wrap items-end gap-3">
                 <div>
                   <label className="label">Where did you find these?</label>
@@ -379,7 +445,11 @@ function SearchPageInner() {
                     ))}
                   </select>
                 </div>
-                <button className="btn-primary" onClick={runImport} disabled={importing || !importText.trim()}>
+                <button
+                  className="btn-primary"
+                  onClick={runImport}
+                  disabled={importing || (importMethod === 'csv' ? !importCsvText.trim() : !importText.trim())}
+                >
                   {importing ? 'Adding…' : 'Add prospects'}
                 </button>
               </div>
@@ -396,8 +466,9 @@ function SearchPageInner() {
         </p>
         <ul className="list-disc space-y-1 pl-5 text-sm text-gray-500">
           <li>
-            <strong className="text-gray-700">Heepsy</strong> — you have an account for this one. Search real estate creators,
-            export/copy results, then paste them into &quot;Add from research.&quot;
+            <strong className="text-gray-700">Heepsy</strong> — you have an account for this one. Search real estate creators, then
+            export the results as CSV and use the &quot;Upload CSV&quot; option in &quot;Add from research&quot; — no retyping
+            needed.
           </li>
           <li>
             <strong className="text-gray-700">Google Ads → Tools → YouTube Creator Partnerships</strong> — log into the shared

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { domainFromUrl } from '@/lib/ahrefs';
 import { insertDiscoveredCandidates, type DiscoveryCandidate } from '@/lib/discoveryInsert';
+import { parseCreatorCsv } from '@/lib/csvImport';
 import { CREATOR_DISCOVERY_NICHES } from '@/lib/rei-grove-content';
 
 function isYouTubeUrl(url: string): boolean {
@@ -21,43 +22,70 @@ function parseLine(line: string): { name: string; link: string | undefined } | n
   return { name, link: link || undefined };
 }
 
-// POST /api/discovery/import — Body: { text, sourceLabel, nicheKey? }
+// POST /api/discovery/import — Body: { text, sourceLabel, nicheKey? } OR { csv, sourceLabel, nicheKey? }
 // For creators found by browsing a paywalled tool with no public API
 // (Heepsy, Google Ads' YouTube Creator Partnerships hub, or anything else) —
-// paste "Name, link" one per line and it runs through the same
-// dedupe/blocklist/batch pipeline as every automated discovery source.
+// either paste "Name, link" one per line, or (for Heepsy, which does export
+// CSV/XLS) upload that export directly via `csv`. Both paths run through the
+// same dedupe/blocklist/batch pipeline as every automated discovery source.
 export async function POST(req: NextRequest) {
-  const { text, sourceLabel, nicheKey } = (await req.json()) as { text: string; sourceLabel: string; nicheKey?: string };
-  if (!text?.trim()) return NextResponse.json({ error: 'Paste at least one prospect first.' }, { status: 400 });
+  const { text, csv, sourceLabel, nicheKey } = (await req.json()) as {
+    text?: string;
+    csv?: string;
+    sourceLabel: string;
+    nicheKey?: string;
+  };
+  if (!text?.trim() && !csv?.trim()) return NextResponse.json({ error: 'Paste at least one prospect, or upload a CSV, first.' }, { status: 400 });
   if (!sourceLabel?.trim()) return NextResponse.json({ error: 'sourceLabel is required' }, { status: 400 });
 
   const niche = nicheKey ? CREATOR_DISCOVERY_NICHES.find((n) => n.key === nicheKey) : undefined;
 
-  const candidates: DiscoveryCandidate[] = [];
-  const skipped: string[] = [];
-  for (const line of text.split('\n')) {
-    const parsed = parseLine(line);
-    if (!parsed) continue;
-    if (!parsed.link) {
-      skipped.push(`"${parsed.name}" — no link, skipped (need at least a URL to dedupe and follow up on)`);
-      continue;
-    }
-    candidates.push({
-      name: parsed.name,
-      domain: domainFromUrl(parsed.link),
-      website: parsed.link,
-      category: isYouTubeUrl(parsed.link) ? 'youtube' : null,
-      contentPresence: `Manually added from ${sourceLabel}.`,
-    });
-  }
+  let candidates: DiscoveryCandidate[] = [];
+  let skipped: string[] = [];
 
-  if (candidates.length === 0) {
-    return NextResponse.json({
-      results: [],
-      created: 0,
-      batchId: null,
-      message: skipped.length > 0 ? `Nothing added — ${skipped.join('; ')}` : 'Nothing to add — paste one prospect per line as "Name, link".',
-    });
+  if (csv?.trim()) {
+    let parsed;
+    try {
+      parsed = parseCreatorCsv(csv);
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : 'Could not read that CSV' }, { status: 400 });
+    }
+    candidates = parsed.candidates;
+    skipped = parsed.skipped;
+    if (candidates.length === 0) {
+      const { name, link, email, audience } = parsed.detectedHeaders;
+      return NextResponse.json({
+        results: [],
+        created: 0,
+        batchId: null,
+        message: `Nothing usable in that CSV. Detected columns — name: ${name ?? 'not found'}, link: ${link ?? 'not found'}, email: ${email ?? 'none'}, audience: ${audience ?? 'none'}.${skipped.length > 0 ? ` (${skipped.join('; ')})` : ''}`,
+      });
+    }
+  } else {
+    for (const line of (text as string).split('\n')) {
+      const parsedLine = parseLine(line);
+      if (!parsedLine) continue;
+      if (!parsedLine.link) {
+        skipped.push(`"${parsedLine.name}" — no link, skipped (need at least a URL to dedupe and follow up on)`);
+        continue;
+      }
+      candidates.push({
+        name: parsedLine.name,
+        domain: domainFromUrl(parsedLine.link),
+        website: parsedLine.link,
+        category: isYouTubeUrl(parsedLine.link) ? 'youtube' : null,
+        contentPresence: `Manually added from ${sourceLabel}.`,
+      });
+    }
+
+    if (candidates.length === 0) {
+      return NextResponse.json({
+        results: [],
+        created: 0,
+        batchId: null,
+        message: skipped.length > 0 ? `Nothing added — ${skipped.join('; ')}` : 'Nothing to add — paste one prospect per line as "Name, link".',
+      });
+    }
   }
 
   try {
