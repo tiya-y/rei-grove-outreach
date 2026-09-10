@@ -12,18 +12,19 @@
 
 1. [console.anthropic.com/keys](https://console.anthropic.com/keys) → Create key → `ANTHROPIC_API_KEY`.
 
-## Step 3 — Ahrefs (optional, but required for creator discovery)
+## Step 3 — Ahrefs (optional, but required for the Contacts search)
 
-Powers two things: Domain Rating / organic traffic pulled for scoring, and the **Discover creators**
-search on Prospect Search (finds real, currently-ranking sites for a niche via Ahrefs SERP data). Skip
-this and scoring just shows "no data" for that signal, and Discover creators is disabled.
+Powers two things: Domain Rating / organic traffic pulled for scoring, and the **Contacts** search on
+Prospect Search (finds named individuals — bylined authors, podcast/interview guests — in a reference
+domain's Ahrefs backlink data). Skip this and scoring just shows "no data" for that signal, and Contacts
+is disabled.
 
 1. [app.ahrefs.com/account/api](https://app.ahrefs.com/account/api) → create key → `AHREFS_API_KEY`.
 
 ## Step 4 — n8n (optional)
 
 Only needed if you want prospects fed into the pipeline automatically instead of adding them by hand or
-via Discover creators.
+via Contacts.
 
 1. Pick a long random string for `N8N_WEBHOOK_SECRET` (e.g. `openssl rand -hex 32`).
 2. Build whatever discovery flow you want in n8n (SERP scrapes, YouTube Data API pulls, RSS/newsletter
@@ -63,9 +64,9 @@ Deploy. Vercel builds automatically on every push to `main`.
 
 ## Step 6 — First prospects
 
-1. On **Prospect Search**, click **+ Add prospect** manually, use **Discover creators** to pull real
-   ranking sites from Ahrefs for one of the 8 target niches, or let an n8n discovery workflow populate
-   the pipeline via the webhook from Step 4 (each bulk import shows up under **History**).
+1. On **Prospect Search**, click **+ Add prospect** manually, use **Contacts** to pull named individuals
+   from a reference domain's Ahrefs backlink data, or let an n8n discovery workflow populate the pipeline
+   via the webhook from Step 4 (each bulk import shows up under **History**).
 2. Open a prospect → **Score this prospect** → paste research notes and click "Ask Claude to suggest
    scores" (or just fill in the rubric yourself) → **Save score** → **Approve for outreach**.
 3. The prospect now appears on the **Outreach** tab. Open it → **Compose outreach** → **Generate draft

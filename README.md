@@ -18,10 +18,11 @@ so it stays accurate to REI Grove's current brand, tiers, and voice.
 - **Prospect Search** — three types: `partner` (companies — proptech, RE services, education/media),
   `creator` (individual bloggers/YouTubers/podcasters/newsletter writers), and `affiliate` (simple
   referral-only relationships). Add manually, have an n8n workflow push discoveries into the pipeline
-  automatically, or use **Discover creators** to pull real, currently-ranking sites from Ahrefs' search
-  data across 8 target niches (small landlord, house hacking/BRRRR, wholesaling/flip, multifamily,
-  mobile home park/self-storage, short-term rental, women in REI, general RE education) — no LLM
-  guessing, every result is a real URL you review and reclassify as needed. Score with the
+  automatically, or use **Contacts** to pull named individuals (bylined authors, podcast/interview
+  guests) out of a reference domain's Ahrefs backlink data — no LLM guessing, every result is a real
+  person found on a real page you review before approving. (An earlier keyword-SERP and raw-backlink-domain
+  discovery mode was removed: both surfaced companies/mega-platforms almost exclusively rather than
+  individual creators — see git history if reviving either is ever worth revisiting.) Score with the
   exact rubric the team already uses by hand: partnership-prospector's 5-dimension Fit Scorecard for
   `partner` prospects, and affiliate-prospector's channel-aware 100-point rubric (YouTube / Blog / Podcast
   / Newsletter) for `creator`/`affiliate` prospects — Claude can suggest dimension scores from pasted
@@ -36,7 +37,7 @@ so it stays accurate to REI Grove's current brand, tiers, and voice.
   the pipeline (a real unsubscribe link is included on every send). There's no automated sending and no
   reply monitoring — if someone replies, you'll see it in your own inbox, and update their stage (Replied,
   In Discussion, etc.) by hand.
-- **History** — every bulk-import batch (n8n or Discover creators) with its prospect count, and a
+- **History** — every bulk-import batch (n8n or Contacts search) with its prospect count, and a
   directory of every prospect you've sent outreach to, linking to their sent log.
 - **Pipeline** — New → Researched → Approved → Reached Out → Replied → In Discussion → Partner Live /
   Affiliate Active, plus Stalled / Pass. Every transition past "approved" is set manually — the app has no
@@ -50,7 +51,7 @@ Browser
         ├── /api/prospects*        -> Neon Postgres (prospects, scoring, disqualifiers)
         ├── /api/batches           -> Neon Postgres (bulk-import batches, for History)
         ├── /api/communications    -> Neon Postgres (sent-log directory, for History)
-        ├── /api/discovery/search  -> Ahrefs API (SERP-based creator discovery)
+        ├── /api/discovery/contacts -> Ahrefs API (backlink byline/podcast-guest contact discovery)
         ├── /api/outreach/draft    -> Anthropic Claude (or the fixed template for creator/affiliate step 1)
         ├── /api/outreach/send     -> Neon Postgres (records a send, advances the pipeline — no email is sent)
         ├── /api/webhooks/n8n/*    -> Neon Postgres (bulk prospect ingestion + batch)       [n8n-triggered]

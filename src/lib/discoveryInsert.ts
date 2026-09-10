@@ -1,15 +1,15 @@
 // ============================================================
 // Shared "dedupe, batch, insert" loop used by every discovery source
-// (keyword SERP search, backlink search, YouTube Data API search, and
-// manual paste import) so new prospects always land the same way: one
-// prospect_batches row per run, checked against the competitor blocklist,
-// deduped against existing prospects by name/website.
+// (backlink contact search, YouTube Data API search, and manual paste
+// import) so new prospects always land the same way: one prospect_batches
+// row per run, checked against the competitor blocklist, deduped against
+// existing prospects by name/website.
 // ============================================================
 
 import { sql } from './db';
 import { checkDisqualifiers } from './scoring';
 
-// Structurally compatible with ahrefs.ts's DiscoveredDomain (its narrower
+// Structurally compatible with ahrefs.ts's BacklinkContact (its narrower
 // `category` union satisfies `string` here) — kept separate so this file
 // doesn't need to know about Ahrefs specifically.
 export interface DiscoveryCandidate {

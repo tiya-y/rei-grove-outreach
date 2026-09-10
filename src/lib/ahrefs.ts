@@ -1,11 +1,24 @@
 // ============================================================
 // Ahrefs client — used to enrich a prospect's website with domain authority
 // and traffic signals that feed the "Audience Size" / "Content Presence"
-// scoring dimensions, and to power Prospect Search's "Discover creators"
-// search (real, currently-ranking sites/videos/discussions for a niche's
-// keywords, rather than an LLM guessing at names). Optional: if
-// AHREFS_API_KEY isn't set, every function here resolves to null/empty and
-// the UI just shows "no data" instead of failing.
+// scoring dimensions, and to power Prospect Search's "Contacts" discovery
+// (named individuals found in a reference domain's backlink data, rather
+// than an LLM guessing at names). Optional: if AHREFS_API_KEY isn't set,
+// every function here resolves to null/empty and the UI just shows "no
+// data" instead of failing.
+//
+// This file used to also power keyword-SERP and raw-backlink-domain
+// discovery modes ("Keyword search" / "Competitor backlinks" in the UI).
+// Both were removed: keyword-SERP results for competitive real-estate terms
+// are dominated by large SEO-optimized companies and lenders (Zillow,
+// Redfin, TurboTenant, Rocket Mortgage...), not individual creators — Google
+// rewards domain authority on head terms, and small creators rarely have
+// enough of it to rank; and raw backlink-domain discovery has no topical
+// relevance filter at all (Ahrefs' refdomains endpoint returns anything
+// that links anywhere to the target, sorted by authority or traffic), so no
+// blocklist size fixes it. The Contacts approach below sidesteps both
+// problems by filtering for a person-shaped signal (byline/podcast guest)
+// instead of a domain-shaped one.
 // ============================================================
 
 import axios from 'axios';
@@ -91,69 +104,6 @@ export async function getDomainMetrics(domains: string[]): Promise<DomainMetrics
   }
 }
 
-interface SerpPosition {
-  url: string;
-  title: string | null;
-  position: number;
-  traffic: number | null;
-  domain_rating: number | null;
-  type: string[];
-}
-
-// What kind of SERP result to search for. Maps to Ahrefs' `type` filter —
-// 'all' omits the filter entirely so every result type comes back.
-export type DiscoveryResultType = 'all' | 'organic' | 'video' | 'discussion';
-
-const AHREFS_TYPE_FILTER: Record<DiscoveryResultType, string | undefined> = {
-  all: undefined,
-  organic: 'organic',
-  video: 'video',
-  discussion: 'discussion',
-};
-
-/**
- * Top-ranking SERP results for a keyword. Throws (with a real, specific
- * message) on request failure rather than swallowing it — a silent [] here
- * used to make every Ahrefs error look identical to "no results found."
- * Real path doubles the segment: /v3/serp-overview/serp-overview.
- */
-async function searchTopResultsForKeyword(keyword: string, resultType: DiscoveryResultType, country = 'us', topPositions = 15): Promise<SerpPosition[]> {
-  const type = AHREFS_TYPE_FILTER[resultType];
-  const res = await ahrefsClient().get('/serp-overview/serp-overview', {
-    params: {
-      keyword,
-      country,
-      top_positions: topPositions,
-      select: 'url,title,position,traffic,domain_rating,type',
-      output: 'json',
-      ...(type ? { type } : {}),
-    },
-  });
-  if (!res.data || !Array.isArray(res.data.positions)) {
-    throw new Error(`unexpected response shape (got ${typeof res.data}: ${JSON.stringify(res.data).slice(0, 200)})`);
-  }
-  // An empty array is a legitimate response: Ahrefs only has SERP data for
-  // keywords it actually tracks (recorded search volume), and most
-  // conversational/long-tail phrasings simply aren't tracked — confirmed via
-  // Keywords Explorer returning zero rows for several niche keywords here,
-  // not a rate-limit/quota issue. Do NOT treat this as an error (a previous
-  // version of this function did, with a hardcoded claim that "this exact
-  // query has real data" — that claim isn't re-verified per call and was
-  // wrong for several keywords, which made a normal "not tracked" case look
-  // like a broken integration). Pick keywords with real recorded volume
-  // (check via Keywords Explorer first) if a niche keeps coming back empty.
-  return res.data.positions;
-}
-
-export interface DiscoveredDomain {
-  name: string;
-  domain: string;
-  website: string;
-  category: 'youtube' | 'community' | 'blog';
-  contentPresence: string;
-  domainRating: number | null;
-}
-
 export function domainFromUrl(url: string): string | null {
   try {
     return new URL(url).hostname.replace(/^www\./, '');
@@ -162,45 +112,23 @@ export function domainFromUrl(url: string): string | null {
   }
 }
 
-function nameFromDomain(domain: string): string {
-  const label = domain.split('.')[0];
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-function isYouTube(domain: string): boolean {
-  return domain === 'youtube.com' || domain === 'm.youtube.com' || domain === 'youtu.be';
-}
-
-// A video's title is the best available signal for who's behind it (Ahrefs
-// doesn't return the channel name) — clean it up a little rather than using
-// it verbatim as a "name."
-function nameFromVideoTitle(title: string | null, domain: string): string {
-  if (!title) return nameFromDomain(domain);
-  const cleaned = title.split(/[|]/)[0].trim();
-  return cleaned.length > 60 ? `${cleaned.slice(0, 57)}...` : cleaned;
-}
-
 // General platforms, marketplaces, mega-media, and generic web
-// infrastructure that reliably show up in both SERP results and backlink
-// profiles but are never themselves a "creator"/partnership prospect.
-// Filtered out before scoring/sorting candidates. The infra half of this
-// list (WordPress, GitHub, Shopify, etc.) came directly out of a real test:
-// pulling BiggerPockets' backlinks sorted by Domain Rating surfaced almost
-// nothing but google.com/youtube.com/wordpress.org/github.com/apple.com —
-// generic "powered by" and badge links every established site accumulates,
-// not partnership-relevant sites. YouTube is deliberately not on this list
-// — a specific video is exactly the kind of creator result this search is
-// for (handled separately since every video shares the youtube.com domain).
+// infrastructure that reliably show up in backlink profiles but are never
+// themselves a "creator"/partnership prospect. Filtered out of Contacts'
+// backlink pull before extraction. The infra half of this list (WordPress,
+// GitHub, Shopify, etc.) came directly out of a real test: pulling
+// BiggerPockets' backlinks sorted by Domain Rating surfaced almost nothing
+// but google.com/youtube.com/wordpress.org/github.com/apple.com — generic
+// "powered by" and badge links every established site accumulates, not
+// partnership-relevant sites.
 const PLATFORM_DOMAIN_BLOCKLIST = [
   // Social/community platforms and mega-media
   'reddit.com', 'quora.com', 'pinterest.com', 'facebook.com', 'instagram.com', 'tiktok.com',
   'linkedin.com', 'twitter.com', 'x.com', 'medium.com', 'wikihow.com', 'wikipedia.org', 'tumblr.com',
   'buzzfeed.com', 'forbes.com', 'businessinsider.com', 'nerdwallet.com', 'investopedia.com', 'flickr.com',
   'bing.com', 'yahoo.com', 'airbnb.com', 'vrbo.com', 'yelp.com', 'nytimes.com', 'baidu.com', 'linktr.ee',
-  // Bare youtube.com (no specific video URL) isn't a resolvable prospect —
-  // note this only affects backlink discovery (getReferringDomains): SERP
-  // keyword discovery checks `isVideo` before this blocklist and keeps
-  // individual video URLs regardless.
+  // Bare youtube.com (no specific video URL, and no channel name available
+  // from a plain backlink row) isn't a resolvable prospect.
   'youtube.com', 'm.youtube.com', 'youtu.be',
   // Generic web infrastructure / CMS / dev / creative tools / CDNs — these
   // show up as high-DR "backlinks" to almost any site regardless of topic.
@@ -234,148 +162,6 @@ function isBlockedPlatform(domain: string): boolean {
   if (MULTI_TLD_BLOCKLIST_PATTERN.test(domain)) return true;
   if (EXACT_MATCH_ONLY_BLOCKLIST.includes(domain)) return true;
   return PLATFORM_DOMAIN_BLOCKLIST.some((blocked) => domain === blocked || domain.endsWith(`.${blocked}`));
-}
-
-export interface DiscoverDomainsResult {
-  candidates: DiscoveredDomain[];
-  errors: string[];
-  /** Funnel counts so "no results" can say *why* instead of just that. */
-  debug: { rawPositions: number; droppedAsPlatform: number; droppedNoRating: number };
-}
-
-/**
- * Runs each of a niche's keywords through Ahrefs SERP Overview and returns
- * up to `targetCount` real, verifiable results — no invented names or
- * guessed sites. `resultType` controls what kind of result to look for:
- * 'organic' (blogs/websites), 'video' (YouTube), 'discussion' (forum
- * threads), or 'all' of the above together.
- *
- * Websites are deduped by domain (one candidate per site). Videos are
- * deduped by URL instead, since every YouTube result shares the domain
- * "youtube.com" — deduping those by domain would collapse every video down
- * to a single candidate. General platforms/marketplaces/mega-media (Reddit,
- * BuzzFeed, Airbnb.com itself, etc.) are dropped since they reliably rank
- * for these keywords but are never themselves a "creator" prospect.
- *
- * Results still need a human look before approving: some
- * property-management-software blogs and other non-individual sites will
- * still slip through, and a video's "name" is derived from its title since
- * Ahrefs doesn't return the channel name.
- */
-export async function discoverDomainsForNiche(
-  keywords: string[],
-  targetCount: number,
-  resultType: DiscoveryResultType = 'all'
-): Promise<DiscoverDomainsResult> {
-  if (!ahrefsEnabled()) {
-    return { candidates: [], errors: ['AHREFS_API_KEY is not configured.'], debug: { rawPositions: 0, droppedAsPlatform: 0, droppedNoRating: 0 } };
-  }
-
-  const byKey = new Map<
-    string,
-    { url: string; domain: string; title: string | null; keyword: string; domainRating: number | null; traffic: number | null; category: DiscoveredDomain['category'] }
-  >();
-  const errors: string[] = [];
-  let rawPositions = 0;
-  let droppedAsPlatform = 0;
-  let droppedNoRating = 0;
-
-  for (const keyword of keywords) {
-    try {
-      const positions = await searchTopResultsForKeyword(keyword, resultType);
-      rawPositions += positions.length;
-      for (const pos of positions) {
-        const domain = domainFromUrl(pos.url);
-        if (!domain) continue;
-
-        const isVideo = isYouTube(domain);
-        if (!isVideo && isBlockedPlatform(domain)) {
-          droppedAsPlatform += 1;
-          continue;
-        }
-        if (!((pos.domain_rating ?? 0) > 0)) {
-          droppedNoRating += 1;
-          continue;
-        }
-
-        const category: DiscoveredDomain['category'] = isVideo ? 'youtube' : pos.type?.includes('discussion') ? 'community' : 'blog';
-        const key = isVideo ? pos.url : domain;
-        if (byKey.has(key)) continue;
-
-        byKey.set(key, { url: pos.url, domain, title: pos.title, keyword, domainRating: pos.domain_rating, traffic: pos.traffic, category });
-      }
-    } catch (err) {
-      errors.push(`"${keyword}" — ${ahrefsErrorMessage(err)}`);
-    }
-  }
-
-  const candidates = Array.from(byKey.values())
-    .sort((a, b) => (b.domainRating ?? 0) - (a.domainRating ?? 0))
-    .slice(0, targetCount)
-    .map((info) => {
-      const name = info.category === 'youtube' ? nameFromVideoTitle(info.title, info.domain) : nameFromDomain(info.domain);
-      const website = info.category === 'youtube' ? info.url : info.domain;
-      const kindLabel = info.category === 'youtube' ? 'YouTube video' : info.category === 'community' ? 'Discussion thread' : 'Page';
-      const contentPresence = info.title
-        ? `${kindLabel} ranking in Google search for "${info.keyword}": "${info.title}" (Domain Rating ${info.domainRating}${info.traffic ? `, ~${info.traffic} est. monthly organic visits` : ''}).`
-        : `${kindLabel} ranking in Google search for "${info.keyword}" (Domain Rating ${info.domainRating}${info.traffic ? `, ~${info.traffic} est. monthly organic visits` : ''}).`;
-      return { name, domain: info.domain, website, category: info.category, contentPresence, domainRating: info.domainRating };
-    });
-
-  return { candidates, errors, debug: { rawPositions, droppedAsPlatform, droppedNoRating } };
-}
-
-// ── Backlink-based partnership discovery ────────────────────────────────────
-// A different angle from keyword search: domains that already link to a
-// comparable real-estate-education resource (e.g. BiggerPockets) are
-// natural partnership/affiliate targets, since they're already engaging
-// with similar content.
-
-interface RefDomainRow {
-  domain: string;
-  domain_rating: number;
-  traffic_domain: number;
-}
-
-/**
- * Domains linking to `targetDomain`, sorted by Domain Rating. Real path:
- * /v3/site-explorer/refdomains — note this is "refdomains," not
- * "referring-domains" (confirmed against Ahrefs' docs; the tool/concept
- * name and the REST path segment don't always match).
- */
-export async function getReferringDomains(targetDomain: string, limit = 50): Promise<DiscoveredDomain[]> {
-  if (!ahrefsEnabled()) return [];
-
-  let rows: RefDomainRow[];
-  try {
-    const res = await ahrefsClient().get('/site-explorer/refdomains', {
-      params: {
-        target: targetDomain,
-        mode: 'subdomains',
-        select: 'domain,domain_rating,traffic_domain',
-        order_by: 'domain_rating:desc',
-        limit,
-        output: 'json',
-      },
-    });
-    if (!res.data || !Array.isArray(res.data.refdomains)) {
-      throw new Error(`unexpected response shape (got ${typeof res.data}: ${JSON.stringify(res.data).slice(0, 200)})`);
-    }
-    rows = res.data.refdomains;
-  } catch (err) {
-    throw new Error(ahrefsErrorMessage(err));
-  }
-
-  return rows
-    .filter((r) => r.domain !== targetDomain && (r.domain_rating ?? 0) > 0 && !isBlockedPlatform(r.domain))
-    .map((r) => ({
-      name: nameFromDomain(r.domain),
-      domain: r.domain,
-      website: r.domain,
-      category: 'blog' as const,
-      contentPresence: `Links to ${targetDomain} (Domain Rating ${r.domain_rating}${r.traffic_domain ? `, ~${r.traffic_domain} est. monthly organic visits` : ''}).`,
-      domainRating: r.domain_rating,
-    }));
 }
 
 // ── Backlink-based CONTACT discovery ────────────────────────────────────────

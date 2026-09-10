@@ -36,19 +36,12 @@ function SearchPageInner() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkWorking, setBulkWorking] = useState(false);
   const [discoverOpen, setDiscoverOpen] = useState(false);
-  const [discoverMode, setDiscoverMode] = useState<'keyword' | 'backlinks' | 'contacts' | 'youtube' | 'import'>('keyword');
+  const [discoverMode, setDiscoverMode] = useState<'contacts' | 'youtube' | 'import'>('contacts');
 
-  // Keyword mode
-  const [discoverNiche, setDiscoverNiche] = useState(CREATOR_DISCOVERY_NICHES[0].key);
-  const [resultType, setResultType] = useState<'all' | 'organic' | 'video' | 'discussion'>('all');
-  const [discovering, setDiscovering] = useState(false);
-
-  // Backlinks mode
-  const [referenceDomain, setReferenceDomain] = useState('biggerpockets.com');
-  const [backlinksNiche, setBacklinksNiche] = useState('');
+  // Shared "find similar reference domains" helper, surfaced inside the
+  // Contacts panel since that's the only mode a reference domain feeds now.
   const [findingCompetitors, setFindingCompetitors] = useState(false);
   const [competitorSuggestions, setCompetitorSuggestions] = useState<CompetitorSuggestion[]>([]);
-  const [findingBacklinks, setFindingBacklinks] = useState(false);
 
   // Contacts mode (named individuals, not sites, found in backlink data)
   const [contactsDomain, setContactsDomain] = useState('biggerpockets.com');
@@ -69,29 +62,6 @@ function SearchPageInner() {
   const [importNiche, setImportNiche] = useState('');
   const [importing, setImporting] = useState(false);
 
-  async function runDiscovery() {
-    setDiscovering(true);
-    try {
-      const res = await fetch('/api/discovery/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nicheKey: discoverNiche, resultType }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      if (json.created > 0) {
-        toast.success(`Found ${json.created} new prospect${json.created === 1 ? '' : 's'} — added to Prospect Search.`);
-      } else {
-        toast(json.message ?? 'No new prospects found this run — everyone found already exists or was disqualified.');
-      }
-      refresh();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Discovery search failed');
-    } finally {
-      setDiscovering(false);
-    }
-  }
-
   async function runFindCompetitors() {
     setFindingCompetitors(true);
     setCompetitorSuggestions([]);
@@ -99,7 +69,7 @@ function SearchPageInner() {
       const res = await fetch('/api/discovery/competitors', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain: referenceDomain }),
+        body: JSON.stringify({ domain: contactsDomain }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
@@ -111,29 +81,6 @@ function SearchPageInner() {
       toast.error(err instanceof Error ? err.message : 'Competitor lookup failed');
     } finally {
       setFindingCompetitors(false);
-    }
-  }
-
-  async function runBacklinkDiscovery() {
-    setFindingBacklinks(true);
-    try {
-      const res = await fetch('/api/discovery/backlinks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ referenceDomain, nicheKey: backlinksNiche || undefined }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      if (json.created > 0) {
-        toast.success(`Found ${json.created} new prospect${json.created === 1 ? '' : 's'} — added to Prospect Search.`);
-      } else {
-        toast(json.message ?? 'No new prospects found this run — everyone found already exists or was disqualified.');
-      }
-      refresh();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Backlink search failed');
-    } finally {
-      setFindingBacklinks(false);
     }
   }
 
@@ -331,18 +278,6 @@ function SearchPageInner() {
         <div className="card space-y-4">
           <div className="flex flex-wrap gap-2">
             <button
-              className={discoverMode === 'keyword' ? 'btn-primary' : 'btn-secondary'}
-              onClick={() => setDiscoverMode('keyword')}
-            >
-              Keyword search
-            </button>
-            <button
-              className={discoverMode === 'backlinks' ? 'btn-primary' : 'btn-secondary'}
-              onClick={() => setDiscoverMode('backlinks')}
-            >
-              Competitor backlinks
-            </button>
-            <button
               className={discoverMode === 'contacts' ? 'btn-primary' : 'btn-secondary'}
               onClick={() => setDiscoverMode('contacts')}
             >
@@ -362,94 +297,14 @@ function SearchPageInner() {
             </button>
           </div>
 
-          {discoverMode === 'keyword' ? (
-            <>
-              <p className="text-sm text-gray-500">
-                Uses Ahrefs to find real, currently-ranking websites, YouTube videos, or forum threads for the niche below (no
-                guessing or invented names) and adds any new ones as prospects for you to review and reclassify. Content quality
-                and format vary run to run and won&apos;t always hit the target count exactly.
-              </p>
-              <div className="flex flex-wrap items-end gap-3">
-                <div>
-                  <label className="label">Niche</label>
-                  <select className="input min-w-[22rem]" value={discoverNiche} onChange={(e) => setDiscoverNiche(e.target.value)}>
-                    {CREATOR_DISCOVERY_NICHES.map((n) => (
-                      <option key={n.key} value={n.key}>
-                        {n.label} — target {n.targetCount} ({n.affiliateFitNote})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Where to look</label>
-                  <select className="input" value={resultType} onChange={(e) => setResultType(e.target.value as typeof resultType)}>
-                    <option value="all">All (websites, videos, forums)</option>
-                    <option value="organic">Websites &amp; blogs</option>
-                    <option value="video">YouTube videos</option>
-                    <option value="discussion">Forums &amp; discussions</option>
-                  </select>
-                </div>
-                <button className="btn-primary" onClick={runDiscovery} disabled={discovering}>
-                  {discovering ? 'Searching…' : 'Find prospects'}
-                </button>
-              </div>
-            </>
-          ) : discoverMode === 'backlinks' ? (
-            <>
-              <p className="text-sm text-gray-500">
-                Finds real sites that already link to a comparable real-estate resource (e.g. BiggerPockets) using Ahrefs&apos;
-                backlink data — sites already engaging with similar content are natural partnership targets. &quot;Find similar
-                competitors&quot; suggests other reference domains to try.
-              </p>
-              <div className="flex flex-wrap items-end gap-3">
-                <div>
-                  <label className="label">Reference domain</label>
-                  <input
-                    className="input min-w-[16rem]"
-                    value={referenceDomain}
-                    onChange={(e) => setReferenceDomain(e.target.value)}
-                    placeholder="biggerpockets.com"
-                  />
-                </div>
-                <button className="btn-secondary" onClick={runFindCompetitors} disabled={findingCompetitors || !referenceDomain.trim()}>
-                  {findingCompetitors ? 'Looking…' : 'Find similar competitors'}
-                </button>
-                <div>
-                  <label className="label">Tag with niche (optional)</label>
-                  <select className="input min-w-[18rem]" value={backlinksNiche} onChange={(e) => setBacklinksNiche(e.target.value)}>
-                    <option value="">No niche tag</option>
-                    {CREATOR_DISCOVERY_NICHES.map((n) => (
-                      <option key={n.key} value={n.key}>
-                        {n.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button className="btn-primary" onClick={runBacklinkDiscovery} disabled={findingBacklinks || !referenceDomain.trim()}>
-                  {findingBacklinks ? 'Searching…' : 'Find prospects'}
-                </button>
-              </div>
-              {competitorSuggestions.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {competitorSuggestions.map((c) => (
-                    <button
-                      key={c.domain}
-                      className="rounded-full border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:border-grove-dark hover:text-grove-dark"
-                      onClick={() => setReferenceDomain(c.domain)}
-                    >
-                      {c.domain} {c.domainRating != null ? `(DR ${c.domainRating})` : ''}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : discoverMode === 'contacts' ? (
+          {discoverMode === 'contacts' ? (
             <>
               <p className="text-sm text-gray-500">
                 Finds named INDIVIDUALS, not sites, in a reference domain&apos;s backlink data (e.g. BiggerPockets): either the
                 bylined author of an article that links to it, or a podcast/interview guest named in that page&apos;s title.
                 Adds each person directly as a prospect with their name split for personalized outreach — Ahrefs doesn&apos;t
-                expose email/LinkedIn, so contact info still needs enrichment (e.g. Apollo) before sending.
+                expose email/LinkedIn, so contact info still needs enrichment (e.g. Apollo) before sending. &quot;Find similar
+                reference domains&quot; suggests other domains in the same space to try beyond BiggerPockets.
               </p>
               <div className="flex flex-wrap items-end gap-3">
                 <div>
@@ -461,6 +316,9 @@ function SearchPageInner() {
                     placeholder="biggerpockets.com"
                   />
                 </div>
+                <button className="btn-secondary" onClick={runFindCompetitors} disabled={findingCompetitors || !contactsDomain.trim()}>
+                  {findingCompetitors ? 'Looking…' : 'Find similar reference domains'}
+                </button>
                 <div>
                   <label className="label">Where to look</label>
                   <select className="input" value={contactKind} onChange={(e) => setContactKind(e.target.value as typeof contactKind)}>
@@ -484,13 +342,24 @@ function SearchPageInner() {
                   {findingContacts ? 'Searching…' : 'Find contacts'}
                 </button>
               </div>
+              {competitorSuggestions.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {competitorSuggestions.map((c) => (
+                    <button
+                      key={c.domain}
+                      className="rounded-full border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:border-grove-dark hover:text-grove-dark"
+                      onClick={() => setContactsDomain(c.domain)}
+                    >
+                      {c.domain} {c.domainRating != null ? `(DR ${c.domainRating})` : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
             </>
           ) : discoverMode === 'youtube' ? (
             <>
               <p className="text-sm text-gray-500">
-                Searches YouTube directly (not Ahrefs) for real channels matching the niche below — a free, separate source from
-                the &quot;YouTube videos&quot; option under Keyword search, which finds individual videos ranking in Google search
-                rather than channels.
+                Searches YouTube directly (not Ahrefs) for real channels matching the niche below.
               </p>
               <div className="flex flex-wrap items-end gap-3">
                 <div>

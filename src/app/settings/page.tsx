@@ -80,7 +80,7 @@ export default function SettingsPage() {
           {data.ahrefsEnabled ? (
             <span className="text-green-700">Connected (AHREFS_API_KEY set)</span>
           ) : (
-            <span className="text-gray-500">Not configured — optional, scoring works fine without it, but Discover creators on Prospect Search is disabled.</span>
+            <span className="text-gray-500">Not configured — optional, scoring works fine without it, but the Contacts search on Prospect Search is disabled.</span>
           )}
         </p>
       </div>

@@ -111,13 +111,13 @@ export const COMPETITOR_DOMAINS_FOR_WARM_LEADS = [
 ];
 
 // ============================================================
-// Creator discovery — the content-creator niches Prospect Search's
-// "Discover creators" search targets, with a rough target count per niche
-// and a note on how well REI Grove's affiliate offer tends to convert there.
-// Target counts are a goal for the pipeline overall, not a guarantee any one
-// search call returns. `keywords` are the queries used to find real,
-// currently-ranking sites via Ahrefs SERP data — see
-// lib/ahrefs.ts's discoverDomainsForNiche().
+// Creator discovery — the content-creator niches Prospect Search targets,
+// with a rough target count per niche and a note on how well REI Grove's
+// affiliate offer tends to convert there. Target counts are a goal for the
+// pipeline overall, not a guarantee any one search call returns. `keywords`
+// are the queries used by the "YouTube channels" discovery mode (see
+// lib/youtube.ts) — also selectable as an optional niche tag on Contacts
+// and "Add from research" results, unrelated to the keyword search itself.
 // ============================================================
 export interface CreatorDiscoveryNiche {
   key: string;
