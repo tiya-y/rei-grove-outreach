@@ -34,7 +34,7 @@ function SearchPageInner() {
   const [typeFilter, setTypeFilter] = useState<'all' | Prospect['prospect_type']>('all');
   const [search, setSearch] = useState('');
   const [discoverOpen, setDiscoverOpen] = useState(false);
-  const [discoverMode, setDiscoverMode] = useState<'keyword' | 'backlinks' | 'youtube' | 'import'>('keyword');
+  const [discoverMode, setDiscoverMode] = useState<'keyword' | 'backlinks' | 'contacts' | 'youtube' | 'import'>('keyword');
 
   // Keyword mode
   const [discoverNiche, setDiscoverNiche] = useState(CREATOR_DISCOVERY_NICHES[0].key);
@@ -47,6 +47,12 @@ function SearchPageInner() {
   const [findingCompetitors, setFindingCompetitors] = useState(false);
   const [competitorSuggestions, setCompetitorSuggestions] = useState<CompetitorSuggestion[]>([]);
   const [findingBacklinks, setFindingBacklinks] = useState(false);
+
+  // Contacts mode (named individuals, not sites, found in backlink data)
+  const [contactsDomain, setContactsDomain] = useState('biggerpockets.com');
+  const [contactKind, setContactKind] = useState<'all' | 'byline' | 'podcast_guest'>('all');
+  const [contactsNiche, setContactsNiche] = useState('');
+  const [findingContacts, setFindingContacts] = useState(false);
 
   // YouTube channels mode
   const [youtubeNiche, setYoutubeNiche] = useState(CREATOR_DISCOVERY_NICHES[0].key);
@@ -126,6 +132,29 @@ function SearchPageInner() {
       toast.error(err instanceof Error ? err.message : 'Backlink search failed');
     } finally {
       setFindingBacklinks(false);
+    }
+  }
+
+  async function runContactsDiscovery() {
+    setFindingContacts(true);
+    try {
+      const res = await fetch('/api/discovery/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referenceDomain: contactsDomain, kind: contactKind, nicheKey: contactsNiche || undefined }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      if (json.created > 0) {
+        toast.success(`Found ${json.created} new contact${json.created === 1 ? '' : 's'} — added to Prospect Search.`);
+      } else {
+        toast(json.message ?? 'No new contacts found this run — everyone found already exists or was disqualified.');
+      }
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Contact search failed');
+    } finally {
+      setFindingContacts(false);
     }
   }
 
@@ -253,6 +282,12 @@ function SearchPageInner() {
               Competitor backlinks
             </button>
             <button
+              className={discoverMode === 'contacts' ? 'btn-primary' : 'btn-secondary'}
+              onClick={() => setDiscoverMode('contacts')}
+            >
+              Contacts (bylines &amp; guests)
+            </button>
+            <button
               className={discoverMode === 'youtube' ? 'btn-primary' : 'btn-secondary'}
               onClick={() => setDiscoverMode('youtube')}
             >
@@ -346,6 +381,48 @@ function SearchPageInner() {
                   ))}
                 </div>
               )}
+            </>
+          ) : discoverMode === 'contacts' ? (
+            <>
+              <p className="text-sm text-gray-500">
+                Finds named INDIVIDUALS, not sites, in a reference domain&apos;s backlink data (e.g. BiggerPockets): either the
+                bylined author of an article that links to it, or a podcast/interview guest named in that page&apos;s title.
+                Adds each person directly as a prospect with their name split for personalized outreach — Ahrefs doesn&apos;t
+                expose email/LinkedIn, so contact info still needs enrichment (e.g. Apollo) before sending.
+              </p>
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="label">Reference domain</label>
+                  <input
+                    className="input min-w-[16rem]"
+                    value={contactsDomain}
+                    onChange={(e) => setContactsDomain(e.target.value)}
+                    placeholder="biggerpockets.com"
+                  />
+                </div>
+                <div>
+                  <label className="label">Where to look</label>
+                  <select className="input" value={contactKind} onChange={(e) => setContactKind(e.target.value as typeof contactKind)}>
+                    <option value="all">Both</option>
+                    <option value="byline">Bylined authors</option>
+                    <option value="podcast_guest">Podcast/interview guests</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Tag with niche (optional)</label>
+                  <select className="input min-w-[18rem]" value={contactsNiche} onChange={(e) => setContactsNiche(e.target.value)}>
+                    <option value="">No niche tag</option>
+                    {CREATOR_DISCOVERY_NICHES.map((n) => (
+                      <option key={n.key} value={n.key}>
+                        {n.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button className="btn-primary" onClick={runContactsDiscovery} disabled={findingContacts || !contactsDomain.trim()}>
+                  {findingContacts ? 'Searching…' : 'Find contacts'}
+                </button>
+              </div>
             </>
           ) : discoverMode === 'youtube' ? (
             <>

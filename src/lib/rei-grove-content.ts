@@ -131,14 +131,19 @@ export interface CreatorDiscoveryNiche {
 }
 
 export const CREATOR_DISCOVERY_NICHES: CreatorDiscoveryNiche[] = [
-  { key: 'small_landlord', label: 'Small Landlord / Self-Managing / Buy-and-Hold', targetCount: 13, affiliateFitNote: 'Mostly high fit', keywords: ['self managing landlord tips', 'buy and hold rental property tips', 'DIY landlord advice'], audienceLabel: 'self-managing landlords' },
-  { key: 'house_hacking_beginner', label: 'House Hacking / BRRRR / Beginner Investor', targetCount: 4, affiliateFitNote: 'High to medium fit', keywords: ['house hacking real estate tips', 'BRRRR method real estate investing', 'beginner real estate investor advice'], audienceLabel: 'beginner real estate investors' },
-  { key: 'wholesaling_flip', label: 'Wholesaling / Fix & Flip', targetCount: 8, affiliateFitNote: 'Mostly low fit (tangential to landlording)', keywords: ['real estate wholesaling tips', 'house flipping real estate advice'], audienceLabel: 'wholesalers and house flippers' },
-  { key: 'multifamily_syndication', label: 'Multifamily / Syndication', targetCount: 6, affiliateFitNote: 'Mostly low fit (accredited-investor skew)', keywords: ['multifamily real estate syndication explained', 'apartment building investing tips'], audienceLabel: 'multifamily investors' },
-  { key: 'mhp_self_storage', label: 'Mobile Home Park / Self-Storage', targetCount: 4, affiliateFitNote: 'Low fit (niche/accredited)', keywords: ['mobile home park investing tips', 'self storage investing tips'], audienceLabel: 'mobile home park and self-storage investors' },
-  { key: 'short_term_rental', label: 'Short-Term Rental / Airbnb Hosting', targetCount: 17, affiliateFitNote: 'Mixed, several high-fit', keywords: ['airbnb hosting tips', 'airbnb superhost advice', 'short term rental property arbitrage tips'], audienceLabel: 'short-term rental hosts' },
-  { key: 'women_in_rei', label: 'Women in Real Estate Investing', targetCount: 10, affiliateFitNote: 'Mixed, several high-fit', keywords: ['women real estate investors advice', 'women in real estate investing tips'], audienceLabel: 'women real estate investors' },
-  { key: 'general_rei_education', label: 'General RE Investing Education', targetCount: 9, affiliateFitNote: 'Medium fit', keywords: ['real estate investing tips for beginners', 'real estate investor education'], audienceLabel: 'real estate investors' },
+  // Keyword lists below are validated against Ahrefs Keywords Explorer
+  // (real recorded US search volume, checked 2026-09-09) rather than
+  // invented descriptive phrases — SERP Overview only returns positions for
+  // keywords Ahrefs actually tracks, so an untracked phrase (0 recorded
+  // volume, ever) silently yields zero results forever regardless of niche.
+  { key: 'small_landlord', label: 'Small Landlord / Self-Managing / Buy-and-Hold', targetCount: 13, affiliateFitNote: 'Mostly high fit', keywords: ['landlord tips', 'diy landlord', 'rental property tips', 'buy and hold rental properties'], audienceLabel: 'self-managing landlords' },
+  { key: 'house_hacking_beginner', label: 'House Hacking / BRRRR / Beginner Investor', targetCount: 4, affiliateFitNote: 'High to medium fit', keywords: ['house hacking', 'brrrr method', 'real estate investing for beginners'], audienceLabel: 'beginner real estate investors' },
+  { key: 'wholesaling_flip', label: 'Wholesaling / Fix & Flip', targetCount: 8, affiliateFitNote: 'Mostly low fit (tangential to landlording)', keywords: ['real estate wholesaling', 'how to flip a house', 'house flipping tips', 'wholesaling real estate for beginners'], audienceLabel: 'wholesalers and house flippers' },
+  { key: 'multifamily_syndication', label: 'Multifamily / Syndication', targetCount: 6, affiliateFitNote: 'Mostly low fit (accredited-investor skew)', keywords: ['real estate syndication', 'multifamily investing', 'apartment investing'], audienceLabel: 'multifamily investors' },
+  { key: 'mhp_self_storage', label: 'Mobile Home Park / Self-Storage', targetCount: 4, affiliateFitNote: 'Low fit (niche/accredited)', keywords: ['mobile home park investing', 'self storage investing'], audienceLabel: 'mobile home park and self-storage investors' },
+  { key: 'short_term_rental', label: 'Short-Term Rental / Airbnb Hosting', targetCount: 17, affiliateFitNote: 'Mixed, several high-fit', keywords: ['airbnb hosting tips', 'airbnb superhost', 'short term rental arbitrage'], audienceLabel: 'short-term rental hosts' },
+  { key: 'women_in_rei', label: 'Women in Real Estate Investing', targetCount: 10, affiliateFitNote: 'Mixed, several high-fit', keywords: ['women in real estate investing', 'female real estate investors'], audienceLabel: 'women real estate investors' },
+  { key: 'general_rei_education', label: 'General RE Investing Education', targetCount: 9, affiliateFitNote: 'Medium fit', keywords: ['real estate investing for beginners', 'real estate investor education'], audienceLabel: 'real estate investors' },
 ];
 
 // Fallback for creator/affiliate prospects with no niche set (e.g. added

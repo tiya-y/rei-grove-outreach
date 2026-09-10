@@ -21,6 +21,11 @@ export interface DiscoveryCandidate {
   domainRating?: number | null;
   audienceSizeEst?: number | null;
   email?: string | null;
+  // Set when the candidate IS a named individual (e.g. backlink-contact
+  // discovery) rather than a company/publication — `name` stays the full
+  // name either way, these just split it for personalized outreach.
+  contactFirstName?: string | null;
+  contactLastName?: string | null;
 }
 
 export interface InsertDiscoveredResult {
@@ -64,10 +69,10 @@ export async function insertDiscoveredCandidates(
 
       await sql`
         insert into prospects (
-          prospect_type, name, email, website, category, niche, content_presence, audience_size_est,
-          source, source_ref, batch_id, disqualified, disqualify_reason, stage
+          prospect_type, name, contact_first_name, contact_last_name, email, website, category, niche,
+          content_presence, audience_size_est, source, source_ref, batch_id, disqualified, disqualify_reason, stage
         ) values (
-          'creator', ${c.name}, ${c.email ?? null}, ${c.website}, ${c.category}, ${nicheKey}, ${c.contentPresence}, ${c.audienceSizeEst ?? null},
+          'creator', ${c.name}, ${c.contactFirstName ?? null}, ${c.contactLastName ?? null}, ${c.email ?? null}, ${c.website}, ${c.category}, ${nicheKey}, ${c.contentPresence}, ${c.audienceSizeEst ?? null},
           ${source}, ${sourceRefTag}, ${batchId},
           ${dq.disqualified}, ${dq.reason ?? null}, ${dq.disqualified ? 'pass' : 'new'}
         )
