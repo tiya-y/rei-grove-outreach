@@ -33,6 +33,8 @@ function SearchPageInner() {
   const [stageFilter, setStageFilter] = useState<ProspectStage | 'all'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | Prospect['prospect_type']>('all');
   const [search, setSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkWorking, setBulkWorking] = useState(false);
   const [discoverOpen, setDiscoverOpen] = useState(false);
   const [discoverMode, setDiscoverMode] = useState<'keyword' | 'backlinks' | 'contacts' | 'youtube' | 'import'>('keyword');
 
@@ -223,6 +225,65 @@ function SearchPageInner() {
       toast.error(err instanceof Error ? err.message : 'Import failed');
     } finally {
       setImporting(false);
+    }
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllVisible(ids: string[], allSelected: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (allSelected) next.delete(id);
+        else next.add(id);
+      }
+      return next;
+    });
+  }
+
+  async function bulkDelete() {
+    const count = selectedIds.size;
+    if (count === 0) return;
+    if (!confirm(`Delete ${count} prospect${count === 1 ? '' : 's'}? This cannot be undone.`)) return;
+    setBulkWorking(true);
+    try {
+      const res = await fetch('/api/prospects', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: Array.from(selectedIds) }) });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      toast.success(`Deleted ${json.deleted} prospect${json.deleted === 1 ? '' : 's'}.`);
+      setSelectedIds(new Set());
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setBulkWorking(false);
+    }
+  }
+
+  async function bulkSetStage(stage: 'approved' | 'pass') {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkWorking(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => fetch(`/api/prospects/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage }) }))
+      );
+      const failed = results.filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok)).length;
+      if (failed > 0) toast.error(`${failed} of ${ids.length} failed to update.`);
+      else toast.success(stage === 'approved' ? `Approved ${ids.length} prospect${ids.length === 1 ? '' : 's'} — moved to Outreach.` : `Passed on ${ids.length} prospect${ids.length === 1 ? '' : 's'}.`);
+      setSelectedIds(new Set());
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setBulkWorking(false);
     }
   }
 
@@ -586,12 +647,37 @@ function SearchPageInner() {
         </button>
       </div>
 
+      {selectedIds.size > 0 && (
+        <div className="card flex flex-wrap items-center gap-3 border-grove-dark bg-grove-light/40 py-3">
+          <span className="text-sm font-medium text-gray-800">{selectedIds.size} selected</span>
+          <button className="btn-primary" onClick={() => bulkSetStage('approved')} disabled={bulkWorking}>
+            Approve → Outreach
+          </button>
+          <button className="btn-secondary" onClick={() => bulkSetStage('pass')} disabled={bulkWorking}>
+            Pass
+          </button>
+          <button className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50" onClick={bulkDelete} disabled={bulkWorking}>
+            Delete
+          </button>
+          <button className="text-sm text-gray-500 hover:underline" onClick={() => setSelectedIds(new Set())}>
+            Clear selection
+          </button>
+        </div>
+      )}
+
       <div className="card overflow-hidden p-0">
         {loading && <p className="p-4 text-sm text-gray-400">Loading…</p>}
         {!loading && prospects.length === 0 && <p className="p-4 text-sm text-gray-400">No prospects match these filters.</p>}
         <table className="w-full text-sm">
           <thead className="border-b bg-gray-50 text-left text-xs uppercase text-gray-500">
             <tr>
+              <th className="w-8 px-4 py-2">
+                <input
+                  type="checkbox"
+                  checked={prospects.length > 0 && prospects.every((p) => selectedIds.has(p.id))}
+                  onChange={() => toggleSelectAllVisible(prospects.map((p) => p.id), prospects.length > 0 && prospects.every((p) => selectedIds.has(p.id)))}
+                />
+              </th>
               <th className="px-4 py-2">Name</th>
               <th className="px-4 py-2">Type</th>
               <th className="px-4 py-2">Category</th>
@@ -603,7 +689,10 @@ function SearchPageInner() {
           </thead>
           <tbody className="divide-y">
             {prospects.map((p) => (
-              <tr key={p.id} className="hover:bg-gray-50">
+              <tr key={p.id} className={selectedIds.has(p.id) ? 'bg-grove-light/30' : 'hover:bg-gray-50'}>
+                <td className="px-4 py-3">
+                  <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelected(p.id)} />
+                </td>
                 <td className="px-4 py-3">
                   <Link href={`/prospects/${p.id}`} className="font-medium text-grove-dark hover:underline">
                     {p.name}

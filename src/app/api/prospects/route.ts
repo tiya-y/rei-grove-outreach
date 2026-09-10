@@ -68,3 +68,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Insert failed' }, { status: 500 });
   }
 }
+
+// DELETE /api/prospects — Body: { ids: string[] } — bulk delete, used by
+// Prospect Search's row-selection toolbar to clear out junk discovery
+// results without opening each one individually.
+export async function DELETE(req: NextRequest) {
+  const { ids } = (await req.json()) as { ids?: string[] };
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return NextResponse.json({ error: 'ids (non-empty array) is required' }, { status: 400 });
+  }
+
+  try {
+    const deleted = await sql`delete from prospects where id = any(${ids}) returning id`;
+    return NextResponse.json({ deleted: deleted.length });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Delete failed' }, { status: 500 });
+  }
+}
