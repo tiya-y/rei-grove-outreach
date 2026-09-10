@@ -36,7 +36,7 @@ function SearchPageInner() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkWorking, setBulkWorking] = useState(false);
   const [discoverOpen, setDiscoverOpen] = useState(false);
-  const [discoverMode, setDiscoverMode] = useState<'contacts' | 'youtube' | 'import'>('contacts');
+  const [discoverMode, setDiscoverMode] = useState<'contacts' | 'podcasts' | 'youtube' | 'import'>('contacts');
 
   // Shared "find similar reference domains" helper, surfaced inside the
   // Contacts panel since that's the only mode a reference domain feeds now.
@@ -48,6 +48,11 @@ function SearchPageInner() {
   const [contactKind, setContactKind] = useState<'all' | 'byline' | 'podcast_guest'>('all');
   const [contactsNiche, setContactsNiche] = useState('');
   const [findingContacts, setFindingContacts] = useState(false);
+
+  // Podcasts mode (Apple Podcasts directory search — finds hosts, not guests)
+  const [podcastKeyword, setPodcastKeyword] = useState('real estate investing');
+  const [podcastsNiche, setPodcastsNiche] = useState('');
+  const [findingPodcasts, setFindingPodcasts] = useState(false);
 
   // YouTube channels mode
   const [youtubeNiche, setYoutubeNiche] = useState(CREATOR_DISCOVERY_NICHES[0].key);
@@ -104,6 +109,29 @@ function SearchPageInner() {
       toast.error(err instanceof Error ? err.message : 'Contact search failed');
     } finally {
       setFindingContacts(false);
+    }
+  }
+
+  async function runPodcastsDiscovery() {
+    setFindingPodcasts(true);
+    try {
+      const res = await fetch('/api/discovery/podcasts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: podcastKeyword, nicheKey: podcastsNiche || undefined }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      if (json.created > 0) {
+        toast.success(`Found ${json.created} new host${json.created === 1 ? '' : 's'} — added to Prospect Search.`);
+      } else {
+        toast(json.message ?? 'No new hosts found this run — everyone found already exists or was disqualified.');
+      }
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Podcast search failed');
+    } finally {
+      setFindingPodcasts(false);
     }
   }
 
@@ -284,6 +312,12 @@ function SearchPageInner() {
               Contacts (bylines &amp; guests)
             </button>
             <button
+              className={discoverMode === 'podcasts' ? 'btn-primary' : 'btn-secondary'}
+              onClick={() => setDiscoverMode('podcasts')}
+            >
+              Podcast hosts
+            </button>
+            <button
               className={discoverMode === 'youtube' ? 'btn-primary' : 'btn-secondary'}
               onClick={() => setDiscoverMode('youtube')}
             >
@@ -356,10 +390,47 @@ function SearchPageInner() {
                 </div>
               )}
             </>
+          ) : discoverMode === 'podcasts' ? (
+            <>
+              <p className="text-sm text-gray-500">
+                Searches Apple&apos;s public Podcasts directory directly (no API key or auth needed) for real podcasts matching a
+                keyword, and adds each host as a prospect when their name looks like an individual rather than a show or network
+                brand — a free, separate source from Contacts&apos; podcast-guest signal, which only catches guests mentioned
+                incidentally in backlink data, not the hosts themselves. Network/branded shows (e.g. &quot;BiggerPockets&quot;)
+                are filtered out; a couple of brand names can still slip through, so give results a quick look before approving.
+              </p>
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="label">Keyword</label>
+                  <input
+                    className="input min-w-[16rem]"
+                    value={podcastKeyword}
+                    onChange={(e) => setPodcastKeyword(e.target.value)}
+                    placeholder="real estate investing"
+                  />
+                </div>
+                <div>
+                  <label className="label">Tag with niche (optional)</label>
+                  <select className="input min-w-[18rem]" value={podcastsNiche} onChange={(e) => setPodcastsNiche(e.target.value)}>
+                    <option value="">No niche tag</option>
+                    {CREATOR_DISCOVERY_NICHES.map((n) => (
+                      <option key={n.key} value={n.key}>
+                        {n.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button className="btn-primary" onClick={runPodcastsDiscovery} disabled={findingPodcasts || !podcastKeyword.trim()}>
+                  {findingPodcasts ? 'Searching…' : 'Find hosts'}
+                </button>
+              </div>
+            </>
           ) : discoverMode === 'youtube' ? (
             <>
               <p className="text-sm text-gray-500">
-                Searches YouTube directly (not Ahrefs) for real channels matching the niche below.
+                Searches YouTube directly (not Ahrefs) for real channels matching the niche below. When a channel&apos;s bio
+                names the creator or lists a business contact email, that&apos;s pulled in too — no Apollo/manual enrichment
+                needed for those.
               </p>
               <div className="flex flex-wrap items-end gap-3">
                 <div>

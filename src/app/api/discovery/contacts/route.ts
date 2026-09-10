@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBacklinkContacts, isAhrefsEnabled, type ContactKind } from '@/lib/ahrefs';
-import { insertDiscoveredCandidates } from '@/lib/discoveryInsert';
+import { insertDiscoveredCandidates, splitName } from '@/lib/discoveryInsert';
 import { CREATOR_DISCOVERY_NICHES } from '@/lib/rei-grove-content';
 
 function normalizeDomain(input: string): string {
@@ -10,14 +10,6 @@ function normalizeDomain(input: string): string {
     .replace(/^www\./, '')
     .replace(/\/.*$/, '')
     .toLowerCase();
-}
-
-// A byline/guest "name" is 2-4 space-separated tokens (see
-// looksLikePersonByline/looksLikeRealName in lib/ahrefs.ts) — split on the
-// last token as the surname, everything before it as the given name(s).
-function splitName(name: string): { first: string; last: string } {
-  const tokens = name.trim().split(/\s+/);
-  return { first: tokens.slice(0, -1).join(' '), last: tokens[tokens.length - 1] };
 }
 
 // POST /api/discovery/contacts — Body: { referenceDomain, kind?, nicheKey? }

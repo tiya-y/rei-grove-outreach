@@ -8,9 +8,58 @@
 // ============================================================
 
 import axios from 'axios';
-import type { DiscoveryCandidate } from './discoveryInsert';
+import { splitName, type DiscoveryCandidate } from './discoveryInsert';
 
 const YOUTUBE_BASE = 'https://www.googleapis.com/youtube/v3';
+
+// ── Channel bio mining ───────────────────────────────────────────────────
+// Creators often self-identify in their channel description ("Hi, I'm Ryan
+// Pineda...") and/or list a direct business contact email there — both are
+// far more valuable than the channel title alone (personalized outreach,
+// or skipping Apollo/manual enrichment entirely when an email is found).
+// Bio prose is normal sentence case, not Title Case, so a capital letter
+// after "I'm " overwhelmingly signals a proper noun rather than a common
+// word (unlike headline-style text, where Title Case makes this much
+// riskier — see the guest-name extraction in ahrefs.ts for that problem).
+// The stopword list below is a safety net for informal/inconsistent bio
+// capitalization ("I'm Excited to..."), not the primary defense.
+//
+// Verified against synthetic bios covering the common conventions
+// (self-intro, "my name is", "founded by", an embedded contact email, and
+// several bios with nothing to find) before shipping — NOT against real
+// live channel descriptions, since testing that needs a working
+// YOUTUBE_API_KEY this session doesn't have. Spot-check the first batch of
+// real results once a key is configured.
+const BIO_NAME_STOPWORDS = new Set([
+  'based', 'here', 'back', 'new', 'just', 'also', 'not', 'still', 'excited', 'passionate', 'ready',
+  'sharing', 'building', 'helping', 'working', 'currently', 'proud', 'happy', 'thrilled', 'honored',
+  'a', 'an', 'the', 'so', 'very', 'really', 'always', 'obsessed', 'grateful', 'blessed',
+]);
+
+function looksLikeBioNameToken(t: string): boolean {
+  return t.length >= 2 && t !== t.toUpperCase() && /^[A-Z][a-zA-Z'-]+$/.test(t) && !BIO_NAME_STOPWORDS.has(t.toLowerCase());
+}
+
+const BIO_NAME_TOKEN = "[A-Z][a-zA-Z'-]+";
+const BIO_NAME_PATTERNS = [
+  new RegExp(`\\bI'?m\\s+(${BIO_NAME_TOKEN}(?:\\s+${BIO_NAME_TOKEN}){0,2})\\b`),
+  new RegExp(`\\b[Mm]y name is\\s+(${BIO_NAME_TOKEN}(?:\\s+${BIO_NAME_TOKEN}){0,2})\\b`),
+  new RegExp(`\\b[Hh]osted by\\s+(${BIO_NAME_TOKEN}(?:\\s+${BIO_NAME_TOKEN}){0,2})\\b`),
+  new RegExp(`\\b[Ff]ounded by\\s+(${BIO_NAME_TOKEN}(?:\\s+${BIO_NAME_TOKEN}){0,2})\\b`),
+];
+
+function extractBioName(description: string): string | null {
+  for (const pattern of BIO_NAME_PATTERNS) {
+    const m = description.match(pattern);
+    if (m && m[1].split(/\s+/).every(looksLikeBioNameToken)) return m[1];
+  }
+  return null;
+}
+
+function extractBioEmail(description: string): string | null {
+  const m = description.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  return m ? m[0] : null;
+}
 
 export function isYoutubeEnabled() {
   return Boolean(process.env.YOUTUBE_API_KEY);
@@ -61,7 +110,7 @@ export async function searchChannelsForKeyword(keyword: string, maxResults = 25)
     return { candidates: [], totalResults };
   }
 
-  let statsRows: { id: string; snippet?: { title?: string; country?: string }; statistics?: { subscriberCount?: string } }[] = [];
+  let statsRows: { id: string; snippet?: { title?: string; country?: string; description?: string }; statistics?: { subscriberCount?: string } }[] = [];
   try {
     const statsRes = await youtubeClient().get('/channels', {
       params: { part: 'snippet,statistics', id: channelIds.join(',') },
@@ -74,13 +123,30 @@ export async function searchChannelsForKeyword(keyword: string, maxResults = 25)
   const candidates: DiscoveryCandidate[] = statsRows.map((row) => {
     const subscriberCount = row.statistics?.subscriberCount ? Number(row.statistics.subscriberCount) : null;
     const title = row.snippet?.title ?? 'Unknown channel';
+    const description = row.snippet?.description ?? '';
+    const bioName = extractBioName(description);
+    const bioEmail = extractBioEmail(description);
+    const { first, last } = bioName ? splitName(bioName) : { first: null, last: null };
+
+    const subscriberNote = `~${subscriberCount != null ? subscriberCount.toLocaleString() : 'unknown'} subscribers`;
+    const contentPresence = [
+      `YouTube channel, ${subscriberNote}.`,
+      bioName ? `Channel bio names the creator as ${bioName}.` : null,
+      bioEmail ? `Business contact email listed in bio: ${bioEmail}.` : null,
+    ]
+      .filter(Boolean)
+      .join(' ');
+
     return {
       name: title,
       domain: 'youtube.com',
       website: `https://www.youtube.com/channel/${row.id}`,
       category: 'youtube',
-      contentPresence: `YouTube channel, ~${subscriberCount != null ? subscriberCount.toLocaleString() : 'unknown'} subscribers.`,
+      contentPresence,
       audienceSizeEst: subscriberCount,
+      email: bioEmail,
+      contactFirstName: first,
+      contactLastName: last,
     };
   });
 

@@ -18,11 +18,15 @@ so it stays accurate to REI Grove's current brand, tiers, and voice.
 - **Prospect Search** — three types: `partner` (companies — proptech, RE services, education/media),
   `creator` (individual bloggers/YouTubers/podcasters/newsletter writers), and `affiliate` (simple
   referral-only relationships). Add manually, have an n8n workflow push discoveries into the pipeline
-  automatically, or use **Contacts** to pull named individuals (bylined authors, podcast/interview
-  guests) out of a reference domain's Ahrefs backlink data — no LLM guessing, every result is a real
-  person found on a real page you review before approving. (An earlier keyword-SERP and raw-backlink-domain
-  discovery mode was removed: both surfaced companies/mega-platforms almost exclusively rather than
-  individual creators — see git history if reviving either is ever worth revisiting.) Score with the
+  automatically, or use one of three named-individual discovery sources: **Contacts** pulls bylined
+  authors and podcast/interview guests out of a reference domain's Ahrefs backlink data; **Podcast
+  hosts** searches Apple's public Podcasts directory directly (no API key needed) for real hosts by
+  keyword; **YouTube channels** searches YouTube's own API and also mines each channel's bio for a
+  self-stated name or business contact email, when present. No LLM guessing anywhere — every result is
+  a real person found on a real page, still worth a quick human glance before approving. (An earlier
+  keyword-SERP and raw-backlink-domain discovery mode was removed: both surfaced companies/mega-platforms
+  almost exclusively rather than individual creators — see git history if reviving either is ever worth
+  revisiting.) Score with the
   exact rubric the team already uses by hand: partnership-prospector's 5-dimension Fit Scorecard for
   `partner` prospects, and affiliate-prospector's channel-aware 100-point rubric (YouTube / Blog / Podcast
   / Newsletter) for `creator`/`affiliate` prospects — Claude can suggest dimension scores from pasted
@@ -52,6 +56,8 @@ Browser
         ├── /api/batches           -> Neon Postgres (bulk-import batches, for History)
         ├── /api/communications    -> Neon Postgres (sent-log directory, for History)
         ├── /api/discovery/contacts -> Ahrefs API (backlink byline/podcast-guest contact discovery)
+        ├── /api/discovery/podcasts -> Apple iTunes Search API (podcast host discovery, no key needed)
+        ├── /api/discovery/youtube -> YouTube Data API (channel discovery + bio name/email mining)
         ├── /api/outreach/draft    -> Anthropic Claude (or the fixed template for creator/affiliate step 1)
         ├── /api/outreach/send     -> Neon Postgres (records a send, advances the pipeline — no email is sent)
         ├── /api/webhooks/n8n/*    -> Neon Postgres (bulk prospect ingestion + batch)       [n8n-triggered]

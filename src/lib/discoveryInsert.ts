@@ -28,6 +28,16 @@ export interface DiscoveryCandidate {
   contactLastName?: string | null;
 }
 
+// A byline/guest/host "name" from any discovery source is 2-4
+// space-separated tokens (see the person-name heuristics in ahrefs.ts and
+// podcasts.ts) — split on the last token as the surname, everything before
+// it as the given name(s). Shared so every source that finds a named
+// individual (rather than a company) splits it the same way.
+export function splitName(name: string): { first: string; last: string } {
+  const tokens = name.trim().split(/\s+/);
+  return { first: tokens.slice(0, -1).join(' '), last: tokens[tokens.length - 1] };
+}
+
 export interface InsertDiscoveredResult {
   results: { name: string; status: 'created' | 'skipped_duplicate' | 'error'; reason?: string }[];
   created: number;
