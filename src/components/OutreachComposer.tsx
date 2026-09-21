@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { ACTIVATION_CHANNELS } from '@/lib/rei-grove-content';
 import type { Prospect } from '@/types';
 
-export default function OutreachComposer({ prospect, onSent }: { prospect: Prospect; onSent: () => void }) {
+export default function OutreachComposer({ prospect, onSent, onEnriched }: { prospect: Prospect; onSent: () => void; onEnriched?: () => void }) {
   const [offerType, setOfferType] = useState(prospect.prospect_type === 'partner' ? 'webinar' : 'affiliate_terms');
   const [sequenceStep, setSequenceStep] = useState(1);
   const [subject, setSubject] = useState('');
@@ -13,8 +13,26 @@ export default function OutreachComposer({ prospect, onSent }: { prospect: Prosp
   const [drafting, setDrafting] = useState(false);
   const [marking, setMarking] = useState(false);
   const [aiGenerated, setAiGenerated] = useState(false);
+  const [enriching, setEnriching] = useState(false);
 
+  const missingEmail = !prospect.disqualified && !prospect.unsubscribed && !prospect.email;
   const blocked = prospect.disqualified || prospect.unsubscribed || !prospect.email;
+
+  async function findEmail() {
+    setEnriching(true);
+    try {
+      const res = await fetch(`/api/prospects/${prospect.id}/enrich`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      if (json.prospect?.email) toast.success(`Found: ${json.prospect.email}`);
+      else toast(`No match found (confidence: ${json.match?.matchConfidence ?? 'none'}).`);
+      onEnriched?.();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Apollo lookup failed');
+    } finally {
+      setEnriching(false);
+    }
+  }
 
   async function draft() {
     setDrafting(true);
@@ -85,13 +103,20 @@ export default function OutreachComposer({ prospect, onSent }: { prospect: Prosp
       </p>
 
       {blocked && (
-        <p className="rounded bg-red-50 p-3 text-sm text-red-700">
-          {prospect.disqualified
-            ? `This prospect is disqualified (${prospect.disqualify_reason}) — drafting is blocked.`
-            : prospect.unsubscribed
-              ? 'This prospect has unsubscribed — drafting is blocked.'
-              : 'This prospect has no email address on file — add one first.'}
-        </p>
+        <div className="flex items-center justify-between gap-3 rounded bg-red-50 p-3 text-sm text-red-700">
+          <span>
+            {prospect.disqualified
+              ? `This prospect is disqualified (${prospect.disqualify_reason}) — drafting is blocked.`
+              : prospect.unsubscribed
+                ? 'This prospect has unsubscribed — drafting is blocked.'
+                : 'This prospect has no email address on file — add one on their detail page, or try Apollo below.'}
+          </span>
+          {missingEmail && (
+            <button className="btn-secondary shrink-0" onClick={findEmail} disabled={enriching}>
+              {enriching ? 'Looking…' : 'Find email (Apollo)'}
+            </button>
+          )}
+        </div>
       )}
 
       <div className="grid grid-cols-2 gap-4">

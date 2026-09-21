@@ -8,6 +8,8 @@ import { DEFAULT_COMPETITOR_BLOCKLIST } from '@/lib/rei-grove-content';
 interface SettingsResponse {
   settings: { competitor_blocklist: { name: string; reason: string }[]; scoring_weights: Record<string, unknown> };
   ahrefsEnabled: boolean;
+  youtubeEnabled: boolean;
+  apolloEnabled: boolean;
 }
 
 export default function SettingsPage() {
@@ -81,6 +83,37 @@ export default function SettingsPage() {
             <span className="text-green-700">Connected (AHREFS_API_KEY set)</span>
           ) : (
             <span className="text-gray-500">Not configured — optional, scoring works fine without it, but the Contacts search on Prospect Search is disabled.</span>
+          )}
+        </p>
+      </div>
+
+      <div className="card space-y-3">
+        <h2 className="font-semibold text-gray-900">YouTube Data API</h2>
+        <p className="text-sm">
+          Status:{' '}
+          {data.youtubeEnabled ? (
+            <span className="text-green-700">Connected (YOUTUBE_API_KEY set)</span>
+          ) : (
+            <span className="text-gray-500">Not configured — optional, the YouTube channels discovery mode is disabled without it.</span>
+          )}
+        </p>
+      </div>
+
+      <div className="card space-y-3">
+        <h2 className="font-semibold text-gray-900">Apollo</h2>
+        <p className="text-sm">
+          Status:{' '}
+          {data.apolloEnabled ? (
+            <span className="text-green-700">Connected (APOLLO_API_KEY set)</span>
+          ) : (
+            <span className="text-gray-500">
+              Not configured — email enrichment (&quot;Find emails&quot; in Prospect Search, &quot;Find email&quot; in Outreach)
+              is disabled without it. Get a key from{' '}
+              <a href="https://app.apollo.io/#/settings/integrations/api" target="_blank" rel="noreferrer" className="underline">
+                Apollo → Settings → API
+              </a>{' '}
+              and add it to Vercel as <code className="rounded bg-gray-100 px-1">APOLLO_API_KEY</code>.
+            </span>
           )}
         </p>
       </div>

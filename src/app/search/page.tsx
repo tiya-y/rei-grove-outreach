@@ -262,6 +262,24 @@ function SearchPageInner() {
     }
   }
 
+  async function bulkEnrich() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkWorking(true);
+    try {
+      const results = await Promise.allSettled(ids.map((id) => fetch(`/api/prospects/${id}/enrich`, { method: 'POST' })));
+      const failed = results.filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok)).length;
+      toast.success(`Checked ${ids.length} prospect${ids.length === 1 ? '' : 's'} via Apollo — refresh to see which got an email. Not every name/domain matches.`);
+      if (failed > 0) toast.error(`${failed} lookup${failed === 1 ? '' : 's'} failed outright — see each prospect's activity log for why.`);
+      setSelectedIds(new Set());
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Enrichment failed');
+    } finally {
+      setBulkWorking(false);
+    }
+  }
+
   const prospects = useMemo(() => {
     let list = data?.prospects ?? [];
     if (batchId) {
@@ -590,6 +608,9 @@ function SearchPageInner() {
       {selectedIds.size > 0 && (
         <div className="card flex flex-wrap items-center gap-3 border-grove-dark bg-grove-light/40 py-3">
           <span className="text-sm font-medium text-gray-800">{selectedIds.size} selected</span>
+          <button className="btn-secondary" onClick={bulkEnrich} disabled={bulkWorking}>
+            Find emails (Apollo)
+          </button>
           <button className="btn-primary" onClick={() => bulkSetStage('approved')} disabled={bulkWorking}>
             Approve → Outreach
           </button>

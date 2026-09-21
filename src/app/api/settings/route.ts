@@ -7,6 +7,8 @@ export async function GET() {
     return NextResponse.json({
       settings: settings ?? { competitor_blocklist: [], scoring_weights: {} },
       ahrefsEnabled: Boolean(process.env.AHREFS_API_KEY),
+      youtubeEnabled: Boolean(process.env.YOUTUBE_API_KEY),
+      apolloEnabled: Boolean(process.env.APOLLO_API_KEY),
     });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Query failed' }, { status: 500 });

@@ -164,7 +164,7 @@ export default function ProspectDetailPage() {
 
         <div className="col-span-2 space-y-6">
           {isOutreachStage(prospect.stage) ? (
-            <OutreachComposer prospect={prospect} onSent={() => refresh()} />
+            <OutreachComposer prospect={prospect} onSent={() => refresh()} onEnriched={() => refresh()} />
           ) : (
             <>
               <ScoringPanel prospect={prospect} onScored={() => refresh()} />
