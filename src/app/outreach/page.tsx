@@ -67,6 +67,7 @@ export default function OutreachPage() {
             <tr>
               <th className="px-4 py-2">Name</th>
               <th className="px-4 py-2">Type</th>
+              <th className="px-4 py-2">Email</th>
               <th className="px-4 py-2">Score</th>
               <th className="px-4 py-2">Stage</th>
               <th className="px-4 py-2">Last contacted</th>
@@ -81,6 +82,9 @@ export default function OutreachPage() {
                   </Link>
                 </td>
                 <td className="px-4 py-3 capitalize text-gray-600">{p.prospect_type}</td>
+                <td className="px-4 py-3">
+                  {p.email ? <span className="text-gray-600">{p.email}</span> : <span className="text-xs text-red-500">No email — open to enrich</span>}
+                </td>
                 <td className="px-4 py-3">
                   <ScoreBadge score={p.score} tier={p.score_breakdown && 'tier' in p.score_breakdown ? (p.score_breakdown as { tier: string }).tier : null} />
                 </td>

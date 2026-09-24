@@ -243,8 +243,29 @@ function SearchPageInner() {
   }
 
   async function bulkSetStage(stage: 'approved' | 'pass') {
-    const ids = Array.from(selectedIds);
+    let ids = Array.from(selectedIds);
     if (ids.length === 0) return;
+
+    // Approving without an email just creates a prospect stuck in Outreach
+    // with drafting/sending blocked (see OutreachComposer) — enforce the
+    // same rule bulk-side that the individual prospect page's own "Approve
+    // for outreach" button already enforces, rather than silently letting
+    // the bulk path skip it.
+    if (stage === 'approved') {
+      const byId = new Map(prospects.map((p) => [p.id, p]));
+      const missingEmail = ids.filter((id) => !byId.get(id)?.email);
+      if (missingEmail.length > 0) {
+        ids = ids.filter((id) => !missingEmail.includes(id));
+        toast.error(
+          `${missingEmail.length} of ${missingEmail.length + ids.length} skipped — no email on file. Run "Find emails (Apollo)" first, or approve them individually once they have one.`
+        );
+        if (ids.length === 0) {
+          setBulkWorking(false);
+          return;
+        }
+      }
+    }
+
     setBulkWorking(true);
     try {
       const results = await Promise.allSettled(
@@ -643,6 +664,7 @@ function SearchPageInner() {
               <th className="px-4 py-2">Type</th>
               <th className="px-4 py-2">Category</th>
               <th className="px-4 py-2">Niche</th>
+              <th className="px-4 py-2">Email</th>
               <th className="px-4 py-2">Score</th>
               <th className="px-4 py-2">Stage</th>
               <th className="px-4 py-2">Source</th>
@@ -663,6 +685,9 @@ function SearchPageInner() {
                 <td className="px-4 py-3 capitalize text-gray-600">{p.prospect_type}</td>
                 <td className="px-4 py-3 text-gray-600">{p.category ?? '—'}</td>
                 <td className="px-4 py-3 text-gray-600">{p.niche ? NICHE_LABEL[p.niche] ?? p.niche : '—'}</td>
+                <td className="px-4 py-3">
+                  {p.email ? <span className="text-gray-600">{p.email}</span> : <span className="text-xs text-red-500">No email</span>}
+                </td>
                 <td className="px-4 py-3">
                   <ScoreBadge score={p.score} tier={p.score_breakdown && 'tier' in p.score_breakdown ? (p.score_breakdown as { tier: string }).tier : null} />
                 </td>
