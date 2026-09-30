@@ -76,8 +76,24 @@ export default function ProspectDetailPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">{prospect.name}</h1>
-          <p className="text-sm text-gray-500 capitalize">
-            {prospect.prospect_type} {prospect.category ? `· ${prospect.category.replace(/_/g, ' ')}` : ''} {prospect.website ? `· ${prospect.website}` : ''}
+          <p className="text-sm text-gray-500">
+            <span className="capitalize">
+              {prospect.prospect_type}
+              {prospect.category ? ` · ${prospect.category.replace(/_/g, ' ')}` : ''}
+            </span>
+            {prospect.website && (
+              <>
+                {' · '}
+                <a
+                  href={/^https?:\/\//i.test(prospect.website) ? prospect.website : `https://${prospect.website}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-grove-dark hover:underline"
+                >
+                  {prospect.website}
+                </a>
+              </>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
