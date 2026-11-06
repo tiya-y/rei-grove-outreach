@@ -104,6 +104,7 @@ export async function searchPodcastsForKeyword(keyword: string, limit = 25): Pro
       contentPresence: `Hosts "${item.collectionName ?? 'a podcast'}"${item.primaryGenreName ? ` (${item.primaryGenreName})` : ''}${item.trackCount ? `, ${item.trackCount} episodes` : ''}.`,
       contactFirstName: first,
       contactLastName: last,
+      companyName: item.collectionName ?? null,
     });
   }
 

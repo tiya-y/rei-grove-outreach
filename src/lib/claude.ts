@@ -11,9 +11,9 @@ import { ACTIVATION_CHANNELS, REI_GROVE_BRAND } from './rei-grove-content';
 import type { ProspectType, CreatorChannel } from './scoring';
 import { getRubric } from './scoring';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+export const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-function firstText(message: Anthropic.Messages.Message): string {
+export function firstText(message: Anthropic.Messages.Message): string {
   const block = message.content[0];
   if (block.type !== 'text') throw new Error('Unexpected response type from Claude');
   return block.text;
@@ -27,7 +27,7 @@ const HUMAN_STYLE_RULES = `STYLE RULES (apply to everything you write):
 - Write short, plain sentences. Contractions are fine. Sound like a real person typing an email from their own inbox, not a marketing template.
 - Reference at least one specific, concrete detail about this exact person or their content/niche — never send something generic that could apply to anyone.`;
 
-function parseJson<T>(text: string): T {
+export function parseJson<T>(text: string): T {
   try {
     return JSON.parse(text) as T;
   } catch {

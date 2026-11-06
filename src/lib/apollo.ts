@@ -55,6 +55,8 @@ export interface ApolloMatchInput {
   // real person who happens to work there).
   domain?: string | null;
   organizationName?: string | null;
+  // A verified profile URL is the strongest identifier Apollo accepts.
+  linkedinUrl?: string | null;
 }
 
 export interface ApolloMatchResult {
@@ -80,6 +82,7 @@ export async function matchPerson(input: ApolloMatchInput): Promise<ApolloMatchR
   if (!input.firstName && !input.lastName && input.fullName) body.name = input.fullName;
   if (input.domain) body.domain = input.domain;
   if (input.organizationName) body.organization_name = input.organizationName;
+  if (input.linkedinUrl) body.linkedin_url = input.linkedinUrl;
 
   try {
     const res = await apolloClient().post('/people/match', body);
@@ -92,6 +95,44 @@ export async function matchPerson(input: ApolloMatchInput): Promise<ApolloMatchR
       title: person.title ?? null,
     };
   } catch (err) {
+    throw new Error(apolloErrorMessage(err));
+  }
+}
+
+export interface ApolloOrganization {
+  name: string | null;
+  domain: string | null;
+  industry: string | null;
+  employees: number | null;
+  description: string | null;
+  keywords: string[];
+}
+
+/**
+ * Company facts for Round 1 (industry, headcount, description) by domain.
+ * Costs 1 Apollo credit per company, and unlike people match it returns
+ * no personal contact data, so it is safe to run before the email reveal.
+ * Returns null when Apollo doesn't know the company. Path and field names
+ * taken from Apollo's docs (docs.apollo.io/reference/organization-enrichment)
+ * and the path was probed live (401 with a bogus key); not yet seen with a
+ * real key.
+ */
+export async function getOrganization(domain: string): Promise<ApolloOrganization | null> {
+  if (!isApolloEnabled()) return null;
+  try {
+    const res = await apolloClient().get('/organizations/enrich', { params: { domain } });
+    const org = res.data?.organization;
+    if (!org) return null;
+    return {
+      name: org.name ?? null,
+      domain: org.primary_domain ?? null,
+      industry: org.industry ?? null,
+      employees: typeof org.estimated_num_employees === 'number' ? org.estimated_num_employees : null,
+      description: org.short_description ? String(org.short_description).slice(0, 500) : null,
+      keywords: Array.isArray(org.keywords) ? org.keywords.slice(0, 15) : [],
+    };
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) return null;
     throw new Error(apolloErrorMessage(err));
   }
 }

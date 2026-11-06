@@ -140,8 +140,7 @@ const PLATFORM_DOMAIN_BLOCKLIST = [
   'dribbble.com', 'behance.net', 'hubspot.com', 'zendesk.com', 'jotform.com', 'eventbrite.com', 'outlook.com',
   // Generic directories/review sites, not partnership-relevant
   'bbb.org', 'crunchbase.com', 'glassdoor.com', 'indeed.com',
-  // REI Grove's own parent company — never a useful "reference domain" or
-  // "prospect" suggestion in its own discovery tool.
+  // Never a useful reference domain or prospect in this tool.
   'innago.com',
 ];
 
@@ -158,7 +157,7 @@ const EXACT_MATCH_ONLY_BLOCKLIST = ['substack.com', 'blogger.com', 'blogspot.com
 // Domain Rating) showed slipping through a plain exact-domain list.
 const MULTI_TLD_BLOCKLIST_PATTERN = /^(google|amazon)\.[a-z.]{2,}$/;
 
-function isBlockedPlatform(domain: string): boolean {
+export function isBlockedPlatform(domain: string): boolean {
   if (MULTI_TLD_BLOCKLIST_PATTERN.test(domain)) return true;
   if (EXACT_MATCH_ONLY_BLOCKLIST.includes(domain)) return true;
   return PLATFORM_DOMAIN_BLOCKLIST.some((blocked) => domain === blocked || domain.endsWith(`.${blocked}`));

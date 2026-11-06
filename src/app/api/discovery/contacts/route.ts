@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
         domainRating: c.domainRating,
         contactFirstName: first,
         contactLastName: last,
+        companyDomain: c.kind === 'byline' ? c.domain : null,
       };
     });
     const { results, created, batchId } = await insertDiscoveredCandidates(

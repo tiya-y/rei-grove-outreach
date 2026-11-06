@@ -9,6 +9,7 @@ export async function GET() {
       ahrefsEnabled: Boolean(process.env.AHREFS_API_KEY),
       youtubeEnabled: Boolean(process.env.YOUTUBE_API_KEY),
       apolloEnabled: Boolean(process.env.APOLLO_API_KEY),
+      serperEnabled: Boolean(process.env.SERPER_API_KEY),
     });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Query failed' }, { status: 500 });

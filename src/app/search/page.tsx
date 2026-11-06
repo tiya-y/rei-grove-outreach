@@ -6,10 +6,11 @@ import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import useSWRLike from '@/lib/useSWRLike';
 import type { Prospect, ProspectStage } from '@/types';
-import { PROSPECT_STAGES } from '@/types';
+import { PROSPECT_STAGES, isFullyQualified } from '@/types';
 import { CREATOR_DISCOVERY_NICHES } from '@/lib/rei-grove-content';
 import ScoreBadge from '@/components/ScoreBadge';
 import StageBadge from '@/components/StageBadge';
+import RoundChips from '@/components/RoundChips';
 
 const NICHE_LABEL: Record<string, string> = Object.fromEntries(CREATOR_DISCOVERY_NICHES.map((n) => [n.key, n.label]));
 
@@ -35,8 +36,9 @@ function SearchPageInner() {
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkWorking, setBulkWorking] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState('');
   const [discoverOpen, setDiscoverOpen] = useState(false);
-  const [discoverMode, setDiscoverMode] = useState<'contacts' | 'podcasts' | 'youtube' | 'import'>('contacts');
+  const [discoverMode, setDiscoverMode] = useState<'contacts' | 'linkedin' | 'podcasts' | 'youtube' | 'import'>('contacts');
 
   // Shared "find similar reference domains" helper, surfaced inside the
   // Contacts panel since that's the only mode a reference domain feeds now.
@@ -48,6 +50,13 @@ function SearchPageInner() {
   const [contactKind, setContactKind] = useState<'all' | 'byline' | 'podcast_guest'>('all');
   const [contactsNiche, setContactsNiche] = useState('');
   const [findingContacts, setFindingContacts] = useState(false);
+
+  // LinkedIn mode (public profiles through Google results)
+  const [linkedinTitle, setLinkedinTitle] = useState('property manager');
+  const [linkedinTopic, setLinkedinTopic] = useState('landlord rental');
+  const [linkedinLocation, setLinkedinLocation] = useState('');
+  const [linkedinNiche, setLinkedinNiche] = useState('');
+  const [findingLinkedin, setFindingLinkedin] = useState(false);
 
   // Podcasts mode (Apple Podcasts directory search — finds hosts, not guests)
   const [podcastKeyword, setPodcastKeyword] = useState('real estate investing');
@@ -109,6 +118,29 @@ function SearchPageInner() {
       toast.error(err instanceof Error ? err.message : 'Contact search failed');
     } finally {
       setFindingContacts(false);
+    }
+  }
+
+  async function runLinkedinDiscovery() {
+    setFindingLinkedin(true);
+    try {
+      const res = await fetch('/api/discovery/linkedin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: linkedinTitle, topic: linkedinTopic, location: linkedinLocation, nicheKey: linkedinNiche || undefined }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      if (json.created > 0) {
+        toast.success(`Found ${json.created} new profile${json.created === 1 ? '' : 's'}. Added to Prospect Search.`);
+      } else {
+        toast(json.message ?? 'No new profiles found this run. Everyone found already exists or was disqualified.');
+      }
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'LinkedIn search failed');
+    } finally {
+      setFindingLinkedin(false);
     }
   }
 
@@ -283,19 +315,90 @@ function SearchPageInner() {
     }
   }
 
-  async function bulkEnrich() {
+  async function bulkQualify() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
+    setBulkWorking(true);
+    const total = ids.length;
+    const queue = [...ids];
+    let finished = 0;
+    let qualified = 0;
+    let failedARound = 0;
+    let nothingToDo = 0;
+    let errors = 0;
+    let firstError = '';
+    setBulkStatus(`Qualifying 0 of ${total}...`);
+
+    // A few prospects at a time so the search and model APIs aren't hammered.
+    async function worker() {
+      while (queue.length > 0) {
+        const id = queue.shift() as string;
+        try {
+          for (let i = 0; i < 3; i++) {
+            const res = await fetch(`/api/prospects/${id}/qualify`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+            const json = await res.json();
+            if (!res.ok) {
+              errors += 1;
+              if (!firstError) firstError = json.error ?? 'request failed';
+              break;
+            }
+            if (json.skipped) {
+              nothingToDo += 1;
+              break;
+            }
+            if (json.result.status === 'fail') {
+              failedARound += 1;
+              break;
+            }
+            if (!json.next) {
+              qualified += 1;
+              break;
+            }
+          }
+        } catch (err) {
+          errors += 1;
+          if (!firstError) firstError = err instanceof Error ? err.message : 'request failed';
+        }
+        finished += 1;
+        setBulkStatus(`Qualifying ${finished} of ${total}...`);
+      }
+    }
+
+    await Promise.all([worker(), worker(), worker()]);
+    const parts = [`${qualified} passed all three rounds`, `${failedARound} stopped at a failed round`];
+    if (nothingToDo > 0) parts.push(`${nothingToDo} had nothing left to run`);
+    toast.success(`Done: ${parts.join(', ')}.`);
+    if (errors > 0) toast.error(`${errors} hit an error. First: ${firstError}`);
+    setBulkStatus('');
+    setSelectedIds(new Set());
+    setBulkWorking(false);
+    refresh();
+  }
+
+  async function bulkEnrich() {
+    const byId = new Map(prospects.map((p) => [p.id, p]));
+    const all = Array.from(selectedIds);
+    const ids = all.filter((id) => {
+      const p = byId.get(id);
+      return p && !p.email && isFullyQualified(p);
+    });
+    const skipped = all.length - ids.length;
+    if (ids.length === 0) {
+      toast.error('Nothing to reveal. A prospect needs all three qualification rounds passed and no email yet.');
+      return;
+    }
     setBulkWorking(true);
     try {
       const results = await Promise.allSettled(ids.map((id) => fetch(`/api/prospects/${id}/enrich`, { method: 'POST' })));
       const failed = results.filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok)).length;
-      toast.success(`Checked ${ids.length} prospect${ids.length === 1 ? '' : 's'} via Apollo — refresh to see which got an email. Not every name/domain matches.`);
-      if (failed > 0) toast.error(`${failed} lookup${failed === 1 ? '' : 's'} failed outright — see each prospect's activity log for why.`);
+      toast.success(
+        `Looked up ${ids.length} qualified prospect${ids.length === 1 ? '' : 's'} in Apollo. Check the Email column to see who matched.${skipped > 0 ? ` Skipped ${skipped} (not fully qualified, or already have an email).` : ''}`
+      );
+      if (failed > 0) toast.error(`${failed} lookup${failed === 1 ? '' : 's'} failed outright. See each prospect's activity log.`);
       setSelectedIds(new Set());
       refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Enrichment failed');
+      toast.error(err instanceof Error ? err.message : 'Email reveal failed');
     } finally {
       setBulkWorking(false);
     }
@@ -349,6 +452,12 @@ function SearchPageInner() {
               onClick={() => setDiscoverMode('contacts')}
             >
               Contacts (bylines &amp; guests)
+            </button>
+            <button
+              className={discoverMode === 'linkedin' ? 'btn-primary' : 'btn-secondary'}
+              onClick={() => setDiscoverMode('linkedin')}
+            >
+              LinkedIn (via Google)
             </button>
             <button
               className={discoverMode === 'podcasts' ? 'btn-primary' : 'btn-secondary'}
@@ -428,6 +537,43 @@ function SearchPageInner() {
                   ))}
                 </div>
               )}
+            </>
+          ) : discoverMode === 'linkedin' ? (
+            <>
+              <p className="text-sm text-gray-500">
+                Finds people by job title and topic using what Google shows for public LinkedIn profiles. LinkedIn has no public
+                API and this never touches LinkedIn itself. Each person is added with their name, title, company, and the full
+                profile link exactly as Google returned it. Titles are read from Google&apos;s result titles, so a few may come
+                back without a company. Needs a Serper key (Settings shows whether it is connected).
+              </p>
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="label">Job title</label>
+                  <input className="input min-w-[14rem]" value={linkedinTitle} onChange={(e) => setLinkedinTitle(e.target.value)} placeholder="property manager" />
+                </div>
+                <div>
+                  <label className="label">Topic keywords</label>
+                  <input className="input min-w-[14rem]" value={linkedinTopic} onChange={(e) => setLinkedinTopic(e.target.value)} placeholder="landlord rental" />
+                </div>
+                <div>
+                  <label className="label">Location (optional)</label>
+                  <input className="input min-w-[12rem]" value={linkedinLocation} onChange={(e) => setLinkedinLocation(e.target.value)} placeholder="Texas" />
+                </div>
+                <div>
+                  <label className="label">Tag with niche (optional)</label>
+                  <select className="input min-w-[18rem]" value={linkedinNiche} onChange={(e) => setLinkedinNiche(e.target.value)}>
+                    <option value="">No niche tag</option>
+                    {CREATOR_DISCOVERY_NICHES.map((n) => (
+                      <option key={n.key} value={n.key}>
+                        {n.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button className="btn-primary" onClick={runLinkedinDiscovery} disabled={findingLinkedin || !linkedinTitle.trim()}>
+                  {findingLinkedin ? 'Searching…' : 'Find profiles'}
+                </button>
+              </div>
             </>
           ) : discoverMode === 'podcasts' ? (
             <>
@@ -629,10 +775,14 @@ function SearchPageInner() {
       {selectedIds.size > 0 && (
         <div className="card flex flex-wrap items-center gap-3 border-grove-dark bg-grove-light/40 py-3">
           <span className="text-sm font-medium text-gray-800">{selectedIds.size} selected</span>
-          <button className="btn-secondary" onClick={bulkEnrich} disabled={bulkWorking}>
-            Find emails (Apollo)
+          {bulkStatus && <span className="text-sm text-gray-500">{bulkStatus}</span>}
+          <button className="btn-primary" onClick={bulkQualify} disabled={bulkWorking}>
+            Run qualification
           </button>
-          <button className="btn-primary" onClick={() => bulkSetStage('approved')} disabled={bulkWorking}>
+          <button className="btn-secondary" onClick={bulkEnrich} disabled={bulkWorking}>
+            Reveal emails (qualified only)
+          </button>
+          <button className="btn-secondary" onClick={() => bulkSetStage('approved')} disabled={bulkWorking}>
             Approve → Outreach
           </button>
           <button className="btn-secondary" onClick={() => bulkSetStage('pass')} disabled={bulkWorking}>
@@ -664,6 +814,7 @@ function SearchPageInner() {
               <th className="px-4 py-2">Type</th>
               <th className="px-4 py-2">Category</th>
               <th className="px-4 py-2">Niche</th>
+              <th className="px-4 py-2">Rounds</th>
               <th className="px-4 py-2">Email</th>
               <th className="px-4 py-2">Score</th>
               <th className="px-4 py-2">Stage</th>
@@ -685,6 +836,9 @@ function SearchPageInner() {
                 <td className="px-4 py-3 capitalize text-gray-600">{p.prospect_type}</td>
                 <td className="px-4 py-3 text-gray-600">{p.category ?? '—'}</td>
                 <td className="px-4 py-3 text-gray-600">{p.niche ? NICHE_LABEL[p.niche] ?? p.niche : '—'}</td>
+                <td className="px-4 py-3">
+                  <RoundChips prospect={p} />
+                </td>
                 <td className="px-4 py-3">
                   {p.email ? <span className="text-gray-600">{p.email}</span> : <span className="text-xs text-red-500">No email</span>}
                 </td>

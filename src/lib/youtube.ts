@@ -147,6 +147,7 @@ export async function searchChannelsForKeyword(keyword: string, maxResults = 25)
       email: bioEmail,
       contactFirstName: first,
       contactLastName: last,
+      companyName: title,
     };
   });
 

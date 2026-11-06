@@ -5,12 +5,14 @@ import { useParams, useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import useSWRLike from '@/lib/useSWRLike';
 import type { Prospect, Message } from '@/types';
-import { PROSPECT_STAGES, isOutreachStage } from '@/types';
+import { PROSPECT_STAGES, isOutreachStage, isFullyQualified } from '@/types';
+import { resolveCompany } from '@/lib/company';
 import StageBadge from '@/components/StageBadge';
 import ScoreBadge from '@/components/ScoreBadge';
 import ScoringPanel from '@/components/ScoringPanel';
 import SentLog from '@/components/SentLog';
 import OutreachComposer from '@/components/OutreachComposer';
+import QualificationPanel from '@/components/QualificationPanel';
 
 interface DetailResponse {
   prospect: Prospect;
@@ -23,10 +25,12 @@ export default function ProspectDetailPage() {
   const router = useRouter();
   const { data, loading, refresh } = useSWRLike<DetailResponse>(`/api/prospects/${params.id}`);
   const [ahrefsLoading, setAhrefsLoading] = useState(false);
+  const [revealing, setRevealing] = useState(false);
 
   if (loading || !data) return <p className="text-sm text-gray-400">Loading…</p>;
 
   const { prospect, messages, activity } = data;
+  const company = resolveCompany(prospect);
 
   async function updateProspect(update: Partial<Prospect>) {
     const res = await fetch(`/api/prospects/${prospect.id}`, {
@@ -59,6 +63,22 @@ export default function ProspectDetailPage() {
       toast.error(err instanceof Error ? err.message : 'Ahrefs lookup failed');
     } finally {
       setAhrefsLoading(false);
+    }
+  }
+
+  async function revealEmail() {
+    setRevealing(true);
+    try {
+      const res = await fetch(`/api/prospects/${prospect.id}/enrich`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      if (json.prospect?.email) toast.success(`Found: ${json.prospect.email}`);
+      else toast(`No match found (confidence: ${json.match?.matchConfidence ?? 'none'}).`);
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Apollo lookup failed');
+    } finally {
+      setRevealing(false);
     }
   }
 
@@ -131,8 +151,34 @@ export default function ProspectDetailPage() {
             <div>{[prospect.contact_first_name, prospect.contact_last_name].filter(Boolean).join(' ') || '—'}</div>
           </div>
           <div className="text-sm">
+            <div className="label">Title</div>
+            <div>{prospect.contact_title ?? '—'}</div>
+          </div>
+          <div className="text-sm">
+            <div className="label">Company</div>
+            <div>{company.name ?? '—'}{company.domain ? ` (${company.domain})` : ''}</div>
+          </div>
+          <div className="text-sm">
+            <div className="label">LinkedIn</div>
+            {prospect.linkedin_url ? (
+              <a href={prospect.linkedin_url} target="_blank" rel="noreferrer" className="break-all text-grove-dark hover:underline">
+                {prospect.linkedin_url}
+              </a>
+            ) : (
+              <div>—</div>
+            )}
+          </div>
+          <div className="text-sm">
             <div className="label">Email</div>
-            <div>{prospect.email ?? '—'}</div>
+            {prospect.email ? (
+              <div>{prospect.email}</div>
+            ) : isFullyQualified(prospect) ? (
+              <button className="text-xs text-grove-dark hover:underline" onClick={revealEmail} disabled={revealing}>
+                {revealing ? 'Looking…' : 'Reveal email (Apollo)'}
+              </button>
+            ) : (
+              <div className="text-xs text-gray-400">Hidden until all three qualification rounds pass.</div>
+            )}
           </div>
           <div className="text-sm">
             <div className="label">Location</div>
@@ -179,6 +225,7 @@ export default function ProspectDetailPage() {
         </div>
 
         <div className="col-span-2 space-y-6">
+          <QualificationPanel prospect={prospect} onChange={() => refresh()} />
           {isOutreachStage(prospect.stage) ? (
             <OutreachComposer prospect={prospect} onSent={() => refresh()} onEnriched={() => refresh()} />
           ) : (

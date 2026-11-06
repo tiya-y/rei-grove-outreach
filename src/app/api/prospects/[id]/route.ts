@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
+import { ensureSchema } from '@/lib/schema';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -21,7 +22,10 @@ const ALLOWED_FIELDS = [
   'email', 'website', 'linkedin_url', 'category', 'niche', 'city', 'state', 'audience_size_est',
   'content_presence', 'stage', 'notes', 'disqualified', 'disqualify_reason',
   'unsubscribed', 'unsubscribed_at',
+  'round1_status', 'round1_reason', 'round2_status', 'round2_reason', 'round3_status', 'round3_reason',
 ] as const;
+
+const ROUND_STATUS_FIELDS = ['round1_status', 'round2_status', 'round3_status'];
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const body = await req.json();
@@ -34,7 +38,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: 'No updatable fields provided' }, { status: 400 });
   }
 
+  for (const field of ROUND_STATUS_FIELDS) {
+    if (field in update && update[field] !== null && update[field] !== 'pass' && update[field] !== 'fail') {
+      return NextResponse.json({ error: `${field} must be "pass", "fail", or null` }, { status: 400 });
+    }
+  }
+
   try {
+    if (Object.keys(update).some((f) => f.startsWith('round'))) await ensureSchema();
     const [before] = await sql`select stage from prospects where id = ${params.id}`;
 
     const setClauses: string[] = [];

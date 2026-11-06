@@ -57,6 +57,15 @@ export interface ScoreBreakdown {
   highConversionBet?: boolean;
 }
 
+export type RoundStatus = 'pass' | 'fail' | null;
+
+export interface RoundEvidence {
+  queries: string[];
+  results: { title: string; link: string; snippet: string }[];
+  apollo?: { name: string | null; industry: string | null; employees: number | null; description: string | null } | null;
+  apolloError?: string;
+}
+
 export interface Prospect {
   id: string;
   prospect_type: ProspectType;
@@ -67,6 +76,15 @@ export interface Prospect {
   email: string | null;
   website: string | null;
   linkedin_url: string | null;
+  company_name: string | null;
+  company_domain: string | null;
+  round1_status: RoundStatus;
+  round1_reason: string | null;
+  round2_status: RoundStatus;
+  round2_reason: string | null;
+  round3_status: RoundStatus;
+  round3_reason: string | null;
+  qualification_evidence: { round1?: RoundEvidence; round2?: RoundEvidence; round3?: RoundEvidence } | null;
   category: string | null;
   niche: string | null;
   city: string | null;
@@ -122,4 +140,19 @@ export interface DashboardStats {
   found: number;
   reached_out: number;
   signed_up: number;
+}
+
+export const QUALIFICATION_ROUNDS = [
+  { round: 1, label: 'Company' },
+  { round: 2, label: 'Contact' },
+  { round: 3, label: 'Relevance' },
+] as const;
+
+export function roundStatus(p: Pick<Prospect, 'round1_status' | 'round2_status' | 'round3_status'>, round: 1 | 2 | 3): RoundStatus {
+  return (round === 1 ? p.round1_status : round === 2 ? p.round2_status : p.round3_status) ?? null;
+}
+
+// All three rounds passed. The email reveal (Apollo) is gated on this.
+export function isFullyQualified(p: Pick<Prospect, 'round1_status' | 'round2_status' | 'round3_status'>): boolean {
+  return p.round1_status === 'pass' && p.round2_status === 'pass' && p.round3_status === 'pass';
 }

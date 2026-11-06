@@ -7,6 +7,7 @@
 // ============================================================
 
 import { sql } from './db';
+import { ensureSchema } from './schema';
 import { checkDisqualifiers } from './scoring';
 
 // Structurally compatible with ahrefs.ts's BacklinkContact (its narrower
@@ -26,6 +27,12 @@ export interface DiscoveryCandidate {
   // name either way, these just split it for personalized outreach.
   contactFirstName?: string | null;
   contactLastName?: string | null;
+  contactTitle?: string | null;
+  linkedinUrl?: string | null;
+  // The contact's employer (or their own show/channel/site), when the
+  // source knows it. Qualification Round 1 judges this company.
+  companyName?: string | null;
+  companyDomain?: string | null;
 }
 
 // A byline/guest/host "name" from any discovery source is 2-4
@@ -52,6 +59,7 @@ export async function insertDiscoveredCandidates(
   sourceRefTag: string,
   source: string
 ): Promise<InsertDiscoveredResult> {
+  await ensureSchema();
   const [settings] = await sql`select competitor_blocklist from app_settings where id = 1`;
   const extraBlocklist = (settings?.competitor_blocklist ?? []) as { name: string; reason: string }[];
 
@@ -79,10 +87,12 @@ export async function insertDiscoveredCandidates(
 
       await sql`
         insert into prospects (
-          prospect_type, name, contact_first_name, contact_last_name, email, website, category, niche,
+          prospect_type, name, contact_first_name, contact_last_name, contact_title, linkedin_url, company_name, company_domain,
+          email, website, category, niche,
           content_presence, audience_size_est, source, source_ref, batch_id, disqualified, disqualify_reason, stage
         ) values (
-          'creator', ${c.name}, ${c.contactFirstName ?? null}, ${c.contactLastName ?? null}, ${c.email ?? null}, ${c.website}, ${c.category}, ${nicheKey}, ${c.contentPresence}, ${c.audienceSizeEst ?? null},
+          'creator', ${c.name}, ${c.contactFirstName ?? null}, ${c.contactLastName ?? null}, ${c.contactTitle ?? null}, ${c.linkedinUrl ?? null}, ${c.companyName ?? null}, ${c.companyDomain ?? null},
+          ${c.email ?? null}, ${c.website}, ${c.category}, ${nicheKey}, ${c.contentPresence}, ${c.audienceSizeEst ?? null},
           ${source}, ${sourceRefTag}, ${batchId},
           ${dq.disqualified}, ${dq.reason ?? null}, ${dq.disqualified ? 'pass' : 'new'}
         )

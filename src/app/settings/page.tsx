@@ -10,6 +10,7 @@ interface SettingsResponse {
   ahrefsEnabled: boolean;
   youtubeEnabled: boolean;
   apolloEnabled: boolean;
+  serperEnabled: boolean;
 }
 
 export default function SettingsPage() {
@@ -95,6 +96,24 @@ export default function SettingsPage() {
             <span className="text-green-700">Connected (YOUTUBE_API_KEY set)</span>
           ) : (
             <span className="text-gray-500">Not configured — optional, the YouTube channels discovery mode is disabled without it.</span>
+          )}
+        </p>
+      </div>
+
+      <div className="card space-y-3">
+        <h2 className="font-semibold text-gray-900">Google search (Serper)</h2>
+        <p className="text-sm">
+          Status:{' '}
+          {data.serperEnabled ? (
+            <span className="text-green-700">Connected (SERPER_API_KEY set)</span>
+          ) : (
+            <span className="text-gray-500">
+              Not configured. Qualification rounds and the LinkedIn (via Google) search are disabled without it. Get a key at{' '}
+              <a href="https://serper.dev" target="_blank" rel="noreferrer" className="underline">
+                serper.dev
+              </a>{' '}
+              (free starter credits) and add it to Vercel as <code className="rounded bg-gray-100 px-1">SERPER_API_KEY</code>.
+            </span>
           )}
         </p>
       </div>

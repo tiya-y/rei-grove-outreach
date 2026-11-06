@@ -58,6 +58,9 @@ Browser
         ├── /api/discovery/contacts -> Ahrefs API (backlink byline/podcast-guest contact discovery)
         ├── /api/discovery/podcasts -> Apple iTunes Search API (podcast host discovery, no key needed)
         ├── /api/discovery/youtube -> YouTube Data API (channel discovery + bio name/email mining)
+        ├── /api/discovery/linkedin -> Serper (public LinkedIn profiles as shown in Google results)
+        ├── /api/prospects/[id]/qualify -> Serper + Apollo company data + Claude (three-round qualification)
+        ├── /api/prospects/[id]/enrich -> Apollo (email reveal, only after all three rounds pass)
         ├── /api/outreach/draft    -> Anthropic Claude (or the fixed template for creator/affiliate step 1)
         ├── /api/outreach/send     -> Neon Postgres (records a send, advances the pipeline — no email is sent)
         ├── /api/webhooks/n8n/*    -> Neon Postgres (bulk prospect ingestion + batch)       [n8n-triggered]

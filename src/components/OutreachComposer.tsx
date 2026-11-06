@@ -4,6 +4,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { ACTIVATION_CHANNELS } from '@/lib/rei-grove-content';
 import type { Prospect } from '@/types';
+import { isFullyQualified } from '@/types';
 
 export default function OutreachComposer({ prospect, onSent, onEnriched }: { prospect: Prospect; onSent: () => void; onEnriched?: () => void }) {
   const [offerType, setOfferType] = useState(prospect.prospect_type === 'partner' ? 'webinar' : 'affiliate_terms');
@@ -16,6 +17,7 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
   const [enriching, setEnriching] = useState(false);
 
   const missingEmail = !prospect.disqualified && !prospect.unsubscribed && !prospect.email;
+  const canReveal = missingEmail && isFullyQualified(prospect);
   const blocked = prospect.disqualified || prospect.unsubscribed || !prospect.email;
 
   async function findEmail() {
@@ -109,11 +111,13 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
               ? `This prospect is disqualified (${prospect.disqualify_reason}) — drafting is blocked.`
               : prospect.unsubscribed
                 ? 'This prospect has unsubscribed — drafting is blocked.'
-                : 'This prospect has no email address on file — add one on their detail page, or try Apollo below.'}
+                : canReveal
+                  ? 'This prospect passed all three rounds but has no email yet. Reveal it with Apollo.'
+                  : 'This prospect has no email and has not passed all three qualification rounds. Run the rounds above first, then reveal the email.'}
           </span>
-          {missingEmail && (
+          {canReveal && (
             <button className="btn-secondary shrink-0" onClick={findEmail} disabled={enriching}>
-              {enriching ? 'Looking…' : 'Find email (Apollo)'}
+              {enriching ? 'Looking…' : 'Reveal email (Apollo)'}
             </button>
           )}
         </div>

@@ -172,6 +172,19 @@ alter table prospects add column if not exists unsubscribed boolean not null def
 alter table prospects add column if not exists unsubscribed_at timestamptz;
 alter table prospects drop column if exists last_reply_at;
 
+-- Qualification rounds (company, contact, relevance) and the contact's company.
+-- The app also adds these automatically the first time it needs them
+-- (src/lib/schema.ts), so this is only needed if you want them up front.
+alter table prospects add column if not exists company_name text;
+alter table prospects add column if not exists company_domain text;
+alter table prospects add column if not exists round1_status text;
+alter table prospects add column if not exists round1_reason text;
+alter table prospects add column if not exists round2_status text;
+alter table prospects add column if not exists round2_reason text;
+alter table prospects add column if not exists round3_status text;
+alter table prospects add column if not exists round3_reason text;
+alter table prospects add column if not exists qualification_evidence jsonb default '{}';
+
 alter table messages drop column if exists body_html;
 alter table messages drop column if exists ms_message_id;
 alter table messages drop column if exists ms_conversation_id;
