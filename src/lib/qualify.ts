@@ -73,7 +73,8 @@ function cleanReason(reason: unknown): string {
 async function judge<T>(prompt: string): Promise<T> {
   const message = await anthropic.messages.create({
     model: QUALIFY_MODEL,
-    max_tokens: 500,
+    // Headroom so a thinking block can't use up the budget before the answer.
+    max_tokens: 2000,
     messages: [{ role: 'user', content: prompt }],
   });
   return parseJson<T>(firstText(message));

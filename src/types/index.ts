@@ -156,3 +156,43 @@ export function roundStatus(p: Pick<Prospect, 'round1_status' | 'round2_status' 
 export function isFullyQualified(p: Pick<Prospect, 'round1_status' | 'round2_status' | 'round3_status'>): boolean {
   return p.round1_status === 'pass' && p.round2_status === 'pass' && p.round3_status === 'pass';
 }
+
+// ── The qualification funnel ────────────────────────────────────────────────
+// Every prospect is in exactly one bucket:
+//   failed     did not meet the criteria (failed a round, was blocklisted at
+//              import, or was passed on by hand). Never reaches Outreach.
+//   qualified  passed all three rounds. Moving forward: reveal email, approve.
+//   pending    not ruled out yet (rounds not run, or partway through).
+
+export type QualificationBucket = 'pending' | 'qualified' | 'failed';
+
+// The round a prospect failed (1, 2, or 3), 0 if it was ruled out some other
+// way (blocklisted at import, or passed on manually), or null if it hasn't been.
+export function failedRound(p: Pick<Prospect, 'round1_status' | 'round2_status' | 'round3_status' | 'disqualified' | 'stage'>): 0 | 1 | 2 | 3 | null {
+  if (p.round1_status === 'fail') return 1;
+  if (p.round2_status === 'fail') return 2;
+  if (p.round3_status === 'fail') return 3;
+  if (p.disqualified || p.stage === 'pass') return 0;
+  return null;
+}
+
+export function qualificationBucket(p: Prospect): QualificationBucket {
+  if (failedRound(p) !== null) return 'failed';
+  return isFullyQualified(p) ? 'qualified' : 'pending';
+}
+
+export function failureText(p: Prospect): string | null {
+  const round = failedRound(p);
+  if (round === null) return null;
+  if (round === 0) return p.disqualified ? `Blocklisted: ${p.disqualify_reason ?? 'no reason recorded'}` : 'Passed on by hand.';
+  const reason = round === 1 ? p.round1_reason : round === 2 ? p.round2_reason : p.round3_reason;
+  return `Failed round ${round}${reason ? `: ${reason}` : ''}`;
+}
+
+// Why a prospect can't move into Outreach yet, or null if it can. Used by the
+// list, the prospect page, and the server so they can never disagree.
+export function approvalBlocker(p: Pick<Prospect, 'email' | 'round1_status' | 'round2_status' | 'round3_status'>): string | null {
+  if (!isFullyQualified(p)) return 'Needs to pass all three qualification rounds first.';
+  if (!p.email) return 'Needs an email address. Reveal it now that the contact has qualified.';
+  return null;
+}

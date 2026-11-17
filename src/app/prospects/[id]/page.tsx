@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import useSWRLike from '@/lib/useSWRLike';
 import type { Prospect, Message } from '@/types';
-import { PROSPECT_STAGES, isOutreachStage, isFullyQualified } from '@/types';
+import { PROSPECT_STAGES, isOutreachStage, isFullyQualified, approvalBlocker } from '@/types';
 import { resolveCompany } from '@/lib/company';
 import StageBadge from '@/components/StageBadge';
 import ScoreBadge from '@/components/ScoreBadge';
@@ -31,6 +31,7 @@ export default function ProspectDetailPage() {
 
   const { prospect, messages, activity } = data;
   const company = resolveCompany(prospect);
+  const blocker = prospect.disqualified ? `disqualified (${prospect.disqualify_reason}).` : approvalBlocker(prospect);
 
   async function updateProspect(update: Partial<Prospect>) {
     const res = await fetch(`/api/prospects/${prospect.id}`, {
@@ -234,18 +235,10 @@ export default function ProspectDetailPage() {
               <div className="card space-y-2">
                 <h2 className="font-semibold text-gray-900">Approve for outreach</h2>
                 <p className="text-sm text-gray-500">
-                  Once this prospect is scored and qualified, approve it to move it into the Outreach pipeline where you can draft and send.
+                  Once this prospect has passed all three qualification rounds and has an email, approve it to move it into the Outreach pipeline where you can draft and send.
                 </p>
-                {(prospect.disqualified || !prospect.email) && (
-                  <p className="text-xs text-red-600">
-                    {prospect.disqualified ? `Blocked — disqualified (${prospect.disqualify_reason}).` : 'Blocked — no email address on file.'}
-                  </p>
-                )}
-                <button
-                  className="btn-primary"
-                  disabled={prospect.disqualified || !prospect.email}
-                  onClick={() => updateProspect({ stage: 'approved' })}
-                >
+                {blocker && <p className="text-xs text-red-600">Blocked: {blocker}</p>}
+                <button className="btn-primary" disabled={Boolean(blocker)} onClick={() => updateProspect({ stage: 'approved' })}>
                   Approve for outreach
                 </button>
               </div>

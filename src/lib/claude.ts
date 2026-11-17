@@ -13,9 +13,16 @@ import { getRubric } from './scoring';
 
 export const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// The reply can open with a non-text block (newer models may emit a
+// thinking block first), so take the first text block rather than assuming
+// content[0] is it. If there is none, say what came back and why it stopped,
+// since that is usually a token limit or a refusal.
 export function firstText(message: Anthropic.Messages.Message): string {
-  const block = message.content[0];
-  if (block.type !== 'text') throw new Error('Unexpected response type from Claude');
+  const block = message.content.find((b): b is Anthropic.Messages.TextBlock => b.type === 'text');
+  if (!block) {
+    const types = message.content.map((b) => b.type).join(', ') || 'none';
+    throw new Error(`Claude returned no text (stop_reason: ${message.stop_reason}, blocks: ${types}).`);
+  }
   return block.text;
 }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { ensureSchema } from '@/lib/schema';
+import { approvalBlocker, isOutreachStage, type ProspectStage } from '@/types';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -47,6 +48,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   try {
     if (Object.keys(update).some((f) => f.startsWith('round'))) await ensureSchema();
     const [before] = await sql`select stage from prospects where id = ${params.id}`;
+
+    // Entering Outreach requires all three qualification rounds passed and an
+    // email on file, enforced here so no screen can route around it.
+    if ('stage' in update && isOutreachStage(update.stage as ProspectStage) && before && !isOutreachStage(before.stage)) {
+      await ensureSchema();
+      const [row] = await sql`select email, round1_status, round2_status, round3_status from prospects where id = ${params.id}`;
+      const blocker = row ? approvalBlocker({ email: row.email, round1_status: row.round1_status, round2_status: row.round2_status, round3_status: row.round3_status }) : null;
+      if (blocker) return NextResponse.json({ error: blocker }, { status: 400 });
+    }
 
     const setClauses: string[] = [];
     const values: unknown[] = [];

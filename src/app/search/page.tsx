@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import useSWRLike from '@/lib/useSWRLike';
 import type { Prospect, ProspectStage } from '@/types';
-import { PROSPECT_STAGES, isFullyQualified } from '@/types';
+import { PROSPECT_STAGES, isFullyQualified, approvalBlocker, failedRound, failureText, qualificationBucket, type QualificationBucket } from '@/types';
 import { CREATOR_DISCOVERY_NICHES } from '@/lib/rei-grove-content';
 import ScoreBadge from '@/components/ScoreBadge';
 import StageBadge from '@/components/StageBadge';
@@ -37,6 +37,8 @@ function SearchPageInner() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkWorking, setBulkWorking] = useState(false);
   const [bulkStatus, setBulkStatus] = useState('');
+  const [bucket, setBucket] = useState<'all' | QualificationBucket>('all');
+  const [failedFilter, setFailedFilter] = useState<'all' | '0' | '1' | '2' | '3'>('all');
   const [discoverOpen, setDiscoverOpen] = useState(false);
   const [discoverMode, setDiscoverMode] = useState<'contacts' | 'linkedin' | 'podcasts' | 'youtube' | 'import'>('contacts');
 
@@ -278,24 +280,27 @@ function SearchPageInner() {
     let ids = Array.from(selectedIds);
     if (ids.length === 0) return;
 
-    // Approving without an email just creates a prospect stuck in Outreach
-    // with drafting/sending blocked (see OutreachComposer) — enforce the
-    // same rule bulk-side that the individual prospect page's own "Approve
-    // for outreach" button already enforces, rather than silently letting
-    // the bulk path skip it.
+    // Only contacts that passed all three rounds and have an email can move
+    // into Outreach. The server enforces the same rule (approvalBlocker).
     if (stage === 'approved') {
       const byId = new Map(prospects.map((p) => [p.id, p]));
-      const missingEmail = ids.filter((id) => !byId.get(id)?.email);
-      if (missingEmail.length > 0) {
-        ids = ids.filter((id) => !missingEmail.includes(id));
-        toast.error(
-          `${missingEmail.length} of ${missingEmail.length + ids.length} skipped — no email on file. Run "Find emails (Apollo)" first, or approve them individually once they have one.`
-        );
-        if (ids.length === 0) {
-          setBulkWorking(false);
-          return;
-        }
+      const total = ids.length;
+      const notQualified = ids.filter((id) => {
+        const p = byId.get(id);
+        return !p || !isFullyQualified(p);
+      });
+      const qualified = ids.filter((id) => !notQualified.includes(id));
+      const noEmail = qualified.filter((id) => !byId.get(id)?.email);
+      ids = qualified.filter((id) => !noEmail.includes(id));
+      const skipped = total - ids.length;
+      if (skipped > 0) {
+        const why = [
+          notQualified.length > 0 ? `${notQualified.length} have not passed all three rounds` : null,
+          noEmail.length > 0 ? `${noEmail.length} qualified but have no email yet (use "Reveal emails")` : null,
+        ].filter(Boolean);
+        toast.error(`${skipped} of ${total} not moved to Outreach: ${why.join('; ')}.`);
       }
+      if (ids.length === 0) return;
     }
 
     setBulkWorking(true);
@@ -404,15 +409,24 @@ function SearchPageInner() {
     }
   }
 
+  // The pool Prospect Search works from, before any funnel or other filter.
+  const pool = useMemo(() => {
+    const all = data?.prospects ?? [];
+    // A batch drill-down from History shows that batch's full roster
+    // regardless of stage; otherwise only prospects not yet in Outreach.
+    return batchId ? all.filter((p) => p.batch_id === batchId) : all.filter((p) => SEARCH_POOL_STAGES.includes(p.stage));
+  }, [data, batchId]);
+
+  const counts = useMemo(() => {
+    const c = { all: pool.length, pending: 0, qualified: 0, failed: 0 };
+    for (const p of pool) c[qualificationBucket(p)] += 1;
+    return c;
+  }, [pool]);
+
   const prospects = useMemo(() => {
-    let list = data?.prospects ?? [];
-    if (batchId) {
-      // Batch drill-down from History — show that batch's full roster
-      // regardless of current stage, ignoring the search-pool filter below.
-      list = list.filter((p) => p.batch_id === batchId);
-    } else {
-      list = list.filter((p) => SEARCH_POOL_STAGES.includes(p.stage));
-    }
+    let list = pool;
+    if (bucket !== 'all') list = list.filter((p) => qualificationBucket(p) === bucket);
+    if (bucket === 'failed' && failedFilter !== 'all') list = list.filter((p) => String(failedRound(p)) === failedFilter);
     if (stageFilter !== 'all') list = list.filter((p) => p.stage === stageFilter);
     if (typeFilter !== 'all') list = list.filter((p) => p.prospect_type === typeFilter);
     if (search.trim()) {
@@ -420,7 +434,7 @@ function SearchPageInner() {
       list = list.filter((p) => p.name.toLowerCase().includes(q) || (p.category ?? '').toLowerCase().includes(q));
     }
     return [...list].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
-  }, [data, stageFilter, typeFilter, search, batchId]);
+  }, [pool, bucket, failedFilter, stageFilter, typeFilter, search]);
 
   return (
     <div className="space-y-6">
@@ -746,6 +760,64 @@ function SearchPageInner() {
         </ul>
       </div>
 
+      <details className="card text-sm text-gray-600">
+        <summary className="cursor-pointer font-medium text-gray-800">How qualification works</summary>
+        <div className="mt-3 space-y-2">
+          <p>
+            <strong>Round 1, company.</strong> Fails if the company is a competitor, a platform or large publisher, has more than 1,000
+            employees, or isn&apos;t a real operating business in real estate or the landlord space.
+          </p>
+          <p>
+            <strong>Round 2, contact.</strong> Passes only if Google (including their LinkedIn profile as Google shows it) confirms this exact
+            person at this company, in a relevant role (owner, founder, host, creator, or a marketing, partnerships, or operations lead), and
+            they haven&apos;t left.
+          </p>
+          <p>
+            <strong>Round 3, relevance.</strong> Scored 0 to 100 on how likely their business or audience manages, invests in, or advises
+            people who manage rentals. Passes at 60 or above.
+          </p>
+          <p>
+            <strong>If a contact fails any round,</strong> they stop there: no more searches or credits are spent on them, they appear under
+            &quot;Did not qualify&quot; with the round and the reason, and they cannot move to Outreach. Nothing is deleted. You can override a
+            round if the call was wrong, re-run it, pass on them, or delete them.
+          </p>
+          <p>
+            <strong>If a contact passes all three,</strong> they appear under &quot;Moving forward.&quot; From there you reveal their email, then
+            approve them into Outreach.
+          </p>
+        </div>
+      </details>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {(
+          [
+            ['all', 'All', counts.all],
+            ['pending', 'Not yet qualified', counts.pending],
+            ['qualified', 'Moving forward', counts.qualified],
+            ['failed', 'Did not qualify', counts.failed],
+          ] as const
+        ).map(([key, label, n]) => (
+          <button key={key} className={bucket === key ? 'btn-primary' : 'btn-secondary'} onClick={() => setBucket(key)}>
+            {label} ({n})
+          </button>
+        ))}
+        {bucket === 'failed' && (
+          <select className="input max-w-xs" value={failedFilter} onChange={(e) => setFailedFilter(e.target.value as typeof failedFilter)}>
+            <option value="all">Failed at any point</option>
+            <option value="1">Failed round 1 (company)</option>
+            <option value="2">Failed round 2 (contact)</option>
+            <option value="3">Failed round 3 (relevance)</option>
+            <option value="0">Blocklisted or passed on by hand</option>
+          </select>
+        )}
+      </div>
+      <p className="-mt-3 text-xs text-gray-500">
+        {bucket === 'pending' && 'Select these and run qualification to move them forward or rule them out.'}
+        {bucket === 'qualified' && 'Passed all three rounds. Reveal their emails, then approve them into Outreach.'}
+        {bucket === 'failed' && 'These did not meet the criteria and will not reach Outreach. Each row shows the round and the reason.'}
+        {bucket === 'all' && 'Everything in Prospect Search. Use the tabs to separate who is moving forward from who was ruled out.'}
+      </p>
+
       <div className="flex flex-wrap gap-3">
         <input
           className="input max-w-xs"
@@ -831,7 +903,10 @@ function SearchPageInner() {
                   <Link href={`/prospects/${p.id}`} className="font-medium text-grove-dark hover:underline">
                     {p.name}
                   </Link>
-                  {p.disqualified && <div className="text-xs text-red-600">Disqualified — {p.disqualify_reason}</div>}
+                  {failureText(p) && (
+                    <div className={`text-xs ${failedRound(p) === 0 && !p.disqualified ? 'text-gray-500' : 'text-red-600'}`}>{failureText(p)}</div>
+                  )}
+                  {qualificationBucket(p) === 'qualified' && <div className="text-xs text-green-700">Passed all three rounds</div>}
                 </td>
                 <td className="px-4 py-3 capitalize text-gray-600">{p.prospect_type}</td>
                 <td className="px-4 py-3 text-gray-600">{p.category ?? '—'}</td>
