@@ -32,3 +32,31 @@ export function ensureSchema(): Promise<void> {
   }
   return ensured;
 }
+
+// Per-person Outlook connections (see outlook.ts). Tokens are stored encrypted.
+// A separate table name from the old single-mailbox integration's
+// mailbox_connections, so leftovers from that never collide.
+let ensuredOutlook: Promise<void> | null = null;
+
+export function ensureOutlookSchema(): Promise<void> {
+  if (!ensuredOutlook) {
+    ensuredOutlook = (async () => {
+      await sql`
+        create table if not exists outlook_connections (
+          ms_user_id         text primary key,
+          email              text not null,
+          display_name       text,
+          access_token_enc   text not null,
+          refresh_token_enc  text not null,
+          expires_at         timestamptz,
+          created_at         timestamptz default now(),
+          updated_at         timestamptz default now()
+        )
+      `;
+    })().catch((err) => {
+      ensuredOutlook = null;
+      throw new Error(`Could not create the outlook_connections table (${err instanceof Error ? err.message : 'unknown error'}). Run the migration in db/schema.sql by hand.`);
+    });
+  }
+  return ensuredOutlook;
+}

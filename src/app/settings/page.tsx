@@ -5,6 +5,15 @@ import toast from 'react-hot-toast';
 import useSWRLike from '@/lib/useSWRLike';
 import { DEFAULT_COMPETITOR_BLOCKLIST } from '@/lib/rei-grove-content';
 
+interface OutlookStatus {
+  configured: boolean;
+  missing: string[];
+  redirectUri: string;
+  connected: boolean;
+  email: string | null;
+  displayName: string | null;
+}
+
 interface SettingsResponse {
   settings: { competitor_blocklist: { name: string; reason: string }[]; scoring_weights: Record<string, unknown> };
   ahrefsEnabled: boolean;
@@ -18,10 +27,26 @@ export default function SettingsPage() {
   const [blocklistText, setBlocklistText] = useState('');
   const [savingBlocklist, setSavingBlocklist] = useState(false);
   const [appUrl, setAppUrl] = useState('');
+  const { data: outlook, refresh: refreshOutlook } = useSWRLike<OutlookStatus>('/api/auth/microsoft/status');
 
   useEffect(() => {
     setAppUrl(window.location.origin);
+    // Result of a Microsoft sign-in comes back as a query parameter.
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get('outlook_error');
+    if (err) toast.error(err, { duration: 10000 });
+    if (err) window.history.replaceState(null, '', '/settings');
   }, []);
+
+  async function disconnectOutlook() {
+    const res = await fetch('/api/auth/microsoft/disconnect', { method: 'POST' });
+    if (res.ok) {
+      toast.success('Outlook disconnected.');
+      refreshOutlook();
+    } else {
+      toast.error('Could not disconnect.');
+    }
+  }
 
   useEffect(() => {
     if (data?.settings.competitor_blocklist) {
@@ -74,6 +99,52 @@ export default function SettingsPage() {
             <code className="rounded bg-gray-100 px-1">{appUrl}/api/webhooks/n8n/prospects</code>
           </div>
         </div>
+      </div>
+
+      <div className="card space-y-3">
+        <h2 className="font-semibold text-gray-900">Outlook (save drafts to your own mailbox)</h2>
+        <p className="text-sm text-gray-500">
+          Each person signs in with their own Microsoft account. The app saves outreach emails to that person&apos;s Outlook Drafts folder. It never sends
+          email and never reads the inbox.
+        </p>
+        {!outlook ? (
+          <p className="text-sm text-gray-400">Checking…</p>
+        ) : !outlook.configured ? (
+          <div className="space-y-2 text-sm text-gray-500">
+            <p>
+              Not configured. Add these to Vercel and redeploy:{' '}
+              {outlook.missing.map((m, i) => (
+                <span key={m}>
+                  <code className="rounded bg-gray-100 px-1">{m}</code>
+                  {i < outlook.missing.length - 1 ? ', ' : ''}
+                </span>
+              ))}
+              .
+            </p>
+            <p>
+              In Microsoft Entra, register the app as Web with redirect URI{' '}
+              <code className="break-all rounded bg-gray-100 px-1">{outlook.redirectUri}</code> and add the delegated Microsoft Graph permissions
+              Mail.ReadWrite, User.Read, and offline_access.
+            </p>
+          </div>
+        ) : outlook.connected ? (
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <span className="text-green-700">Connected as {outlook.email}</span>
+            <button className="btn-secondary" onClick={disconnectOutlook}>
+              Disconnect
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2 text-sm">
+            <p className="text-gray-500">Not connected in this browser.</p>
+            <a className="btn-primary inline-block" href="/api/auth/microsoft?return=/settings">
+              Connect Outlook
+            </a>
+            <p className="text-xs text-gray-400">
+              Redirect URI registered in Entra must be exactly: <code className="break-all rounded bg-gray-100 px-1">{outlook.redirectUri}</code>
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="card space-y-3">

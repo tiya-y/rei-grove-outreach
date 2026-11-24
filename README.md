@@ -1,9 +1,9 @@
 # REI Grove Outreach
 
 A cold outreach app for REI Grove's partnership, affiliate, and creator pipeline: discover prospects,
-score them, and generate a personalized initial outreach email — you copy it, send it from your own
-inbox, and mark it sent to keep the pipeline up to date. This app never connects to or reads anyone's
-email inbox.
+score them, and generate a personalized initial outreach email. You send it yourself from your own
+inbox (copy it, or save it to your own Outlook Drafts with the optional Outlook connection) and mark it
+sent to keep the pipeline up to date. This app never sends email and never reads anyone's inbox.
 
 Built as a sibling to `PO-outreach-app` (same Next.js + Postgres + Vercel stack, on Neon instead of
 Supabase), with the scoring rubrics
@@ -37,7 +37,7 @@ so it stays accurate to REI Grove's current brand, tiers, and voice.
   template (compensation terms and links never drift); every other case (partner-type prospects, and any
   follow-up you choose to generate) is drafted by Claude in REI Grove's voice, personalized to that
   prospect, with hard style rules against em dashes and AI-sounding filler. You review it, **copy it to
-  your clipboard**, send it yourself from your own email, and click **Mark as sent** to log it and advance
+  your clipboard** (or, if Outlook is connected in Settings, **save it to your own Outlook Drafts**), send it yourself from your own email, and click **Mark as sent** to log it and advance
   the pipeline (a real unsubscribe link is included on every send). There's no automated sending and no
   reply monitoring — if someone replies, you'll see it in your own inbox, and update their stage (Replied,
   In Discussion, etc.) by hand.
@@ -63,6 +63,8 @@ Browser
         ├── /api/prospects/[id]/enrich -> Apollo (email reveal, only after all three rounds pass)
         ├── /api/outreach/draft    -> Anthropic Claude (or the fixed template for creator/affiliate step 1)
         ├── /api/outreach/send     -> Neon Postgres (records a send, advances the pipeline — no email is sent)
+        ├── /api/outreach/outlook-draft -> Microsoft Graph (saves a draft to the signed-in person's own Outlook Drafts; never sends)
+        ├── /api/auth/microsoft*   -> Microsoft sign-in per person (tokens stored encrypted in outlook_connections)
         ├── /api/webhooks/n8n/*    -> Neon Postgres (bulk prospect ingestion + batch)       [n8n-triggered]
         ├── /api/unsubscribe/[id]  -> Neon Postgres (public opt-out link)
         └── /api/ahrefs/lookup     -> Ahrefs API (optional domain metrics)
@@ -97,5 +99,10 @@ login screen. That's fine behind Vercel's own deployment protection for a small 
 - `/api/webhooks/n8n/prospects` is the only route gated by a shared secret (`N8N_WEBHOOK_SECRET`) because
   it's meant to be called from outside the app (by n8n). Every other API route is open to anyone who can
   reach the deployment — tighten with real auth if this grows beyond a couple of trusted teammates.
+- The optional Outlook connection identifies who is using the app with a signed cookie, only so each person's
+  drafts go to their own mailbox. It does not password-protect the rest of the app. Microsoft's `Mail.ReadWrite`
+  permission is the narrowest one that can create drafts; it technically also allows reading mail, but the
+  only mailbox call this app makes is creating a draft. Stored Microsoft tokens are encrypted with
+  `SESSION_SECRET`. Set `MS365_ALLOWED_EMAILS` to limit who can connect.
 - `/api/unsubscribe/[id]` is intentionally public with no auth — it's meant to be clicked from an email
   client by someone who isn't logged into the app.

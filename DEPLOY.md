@@ -37,6 +37,20 @@ via Contacts.
      `batchLabel` (and/or `source_ref`) at the top level names that batch; each prospect's own
      `source_ref` is separate, per-prospect metadata.
 
+## Step 4b — Outlook drafts (optional)
+
+Lets each teammate save outreach emails to their OWN Outlook Drafts folder. Skip it and the Copy button still works.
+
+1. Microsoft Entra admin center (entra.microsoft.com) -> App registrations -> New registration. Name it, choose
+   "this organization only", and set a Web redirect URI of `https://YOUR-VERCEL-URL.vercel.app/api/auth/microsoft/callback`
+   (Settings in the app shows the exact value). If you can't register apps yourself, your IT admin has to.
+2. API permissions -> Add -> Microsoft Graph -> Delegated: `Mail.ReadWrite`, `User.Read`, `offline_access`. Grant admin
+   consent if your organization requires it.
+3. Certificates & secrets -> New client secret. Copy the **Value** right away.
+4. Add to Vercel (and redeploy): `MS365_TENANT_ID` (Directory/tenant ID), `MS365_CLIENT_ID` (Application/client ID),
+   `MS365_CLIENT_SECRET`, `SESSION_SECRET` (any long random string), and optionally `MS365_ALLOWED_EMAILS`.
+5. In the app: Settings -> Connect Outlook. Each person does this once in their own browser.
+
 ## Step 5 — Deploy to Vercel
 
 ```bash
@@ -58,6 +72,8 @@ In Vercel → Project Settings → **Environment Variables**, add every key from
 | `ANTHROPIC_API_KEY` | From Anthropic Console |
 | `AHREFS_API_KEY` | Optional — from Ahrefs |
 | `N8N_WEBHOOK_SECRET` | Optional — only if using n8n bulk import |
+| `MS365_TENANT_ID`, `MS365_CLIENT_ID`, `MS365_CLIENT_SECRET`, `SESSION_SECRET` | Optional — Outlook drafts (step 4b) |
+| `MS365_ALLOWED_EMAILS` | Optional — limit who can connect Outlook |
 | `NEXT_PUBLIC_APP_URL` | Your Vercel URL |
 
 Deploy. Vercel builds automatically on every push to `main`.

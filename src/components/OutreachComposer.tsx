@@ -2,9 +2,16 @@
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
+import useSWRLike from '@/lib/useSWRLike';
 import { ACTIVATION_CHANNELS } from '@/lib/rei-grove-content';
 import type { Prospect } from '@/types';
 import { isFullyQualified } from '@/types';
+
+interface OutlookStatus {
+  configured: boolean;
+  connected: boolean;
+  email: string | null;
+}
 
 export default function OutreachComposer({ prospect, onSent, onEnriched }: { prospect: Prospect; onSent: () => void; onEnriched?: () => void }) {
   const [offerType, setOfferType] = useState(prospect.prospect_type === 'partner' ? 'webinar' : 'affiliate_terms');
@@ -15,6 +22,9 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
   const [marking, setMarking] = useState(false);
   const [aiGenerated, setAiGenerated] = useState(false);
   const [enriching, setEnriching] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [savedDraft, setSavedDraft] = useState<{ webLink: string | null; mailbox: string } | null>(null);
+  const { data: outlook, refresh: refreshOutlook } = useSWRLike<OutlookStatus>('/api/auth/microsoft/status');
 
   const missingEmail = !prospect.disqualified && !prospect.unsubscribed && !prospect.email;
   const canReveal = missingEmail && isFullyQualified(prospect);
@@ -70,6 +80,32 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
     }
   }
 
+  async function saveToOutlook() {
+    if (!subject || !body) {
+      toast.error('Generate or write a subject + body first.');
+      return;
+    }
+    setSavingDraft(true);
+    try {
+      const res = await fetch('/api/outreach/outlook-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prospectId: prospect.id, subject, body }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        if (json.reconnect) refreshOutlook();
+        throw new Error(json.error);
+      }
+      setSavedDraft({ webLink: json.draft.webLink, mailbox: json.mailbox });
+      toast.success(`Saved to ${json.mailbox} Drafts. Review and send it from Outlook.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save the draft');
+    } finally {
+      setSavingDraft(false);
+    }
+  }
+
   async function markSent() {
     if (!subject || !body) {
       toast.error('Generate or write a subject + body first.');
@@ -88,6 +124,7 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
       setSubject('');
       setBody('');
       setAiGenerated(false);
+      setSavedDraft(null);
       onSent();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to record send');
@@ -100,8 +137,8 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
     <div className="card space-y-4">
       <h2 className="font-semibold text-gray-900">Compose outreach</h2>
       <p className="text-sm text-gray-500">
-        Generate the draft, copy it, and send it from your own inbox. Once it&apos;s sent, mark it here so the pipeline stays up to
-        date.
+        Generate the draft, then save it to your Outlook Drafts (or copy it) and send it from your own inbox. The app never sends
+        email itself. Once it&apos;s sent, mark it here so the pipeline stays up to date.
       </p>
 
       {blocked && (
@@ -157,6 +194,28 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
         <label className="label">Body</label>
         <textarea className="input" rows={10} value={body} onChange={(e) => setBody(e.target.value)} />
       </div>
+
+      {outlook?.configured && (
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          {outlook.connected ? (
+            <>
+              <button className="btn-secondary" onClick={saveToOutlook} disabled={savingDraft || blocked}>
+                {savingDraft ? 'Saving…' : 'Save to Outlook drafts'}
+              </button>
+              <span className="text-xs text-gray-500">Saves to {outlook.email}</span>
+            </>
+          ) : (
+            <a className="btn-secondary" href={`/api/auth/microsoft?return=${encodeURIComponent(`/prospects/${prospect.id}`)}`}>
+              Connect Outlook to save drafts
+            </a>
+          )}
+          {savedDraft?.webLink && (
+            <a href={savedDraft.webLink} target="_blank" rel="noreferrer" className="text-grove-dark hover:underline">
+              Open draft in Outlook
+            </a>
+          )}
+        </div>
+      )}
 
       <div className="flex gap-2">
         <button className="btn-secondary" onClick={copyToClipboard} disabled={blocked}>

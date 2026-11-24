@@ -196,3 +196,15 @@ alter table messages drop column if exists received_at;
 
 drop trigger if exists update_mailbox_connections_updated_at on mailbox_connections;
 drop table if exists mailbox_connections;
+
+-- Per-person Outlook connections (tokens stored encrypted by the app).
+create table if not exists outlook_connections (
+  ms_user_id         text primary key,
+  email              text not null,
+  display_name       text,
+  access_token_enc   text not null,
+  refresh_token_enc  text not null,
+  expires_at         timestamptz,
+  created_at         timestamptz default now(),
+  updated_at         timestamptz default now()
+);
