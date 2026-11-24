@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { ensureOutreachSchema } from '@/lib/schema';
 import { listExamples, parseExample } from '@/lib/outreachDraft';
+import { isProgramKey } from '@/lib/affiliatePrograms';
 
 export const dynamic = 'force-dynamic';
 const MAX_EXAMPLES = 20;
@@ -15,12 +16,14 @@ export async function GET() {
   }
 }
 
-// POST /api/outreach/examples — add one example. Body: { text, label?, subject? }
+// POST /api/outreach/examples — add one example for a program. Body: { text, program, label?, subject? }
 // "text" is the pasted email or the contents of an uploaded text file. A
 // "Subject:" line (or email headers) at the top is split off as the subject.
 export async function POST(req: NextRequest) {
   const b = await req.json();
   if (typeof b.text !== 'string' || !b.text.trim()) return NextResponse.json({ error: 'text is required' }, { status: 400 });
+
+  if (!isProgramKey(b.program)) return NextResponse.json({ error: 'program must be "reigrove" or "innago"' }, { status: 400 });
 
   let parsed;
   try {
@@ -36,7 +39,7 @@ export async function POST(req: NextRequest) {
     const [{ count }] = await sql`select count(*)::int as count from email_examples`;
     if (count >= MAX_EXAMPLES) return NextResponse.json({ error: `You already have ${MAX_EXAMPLES} examples. Delete one first.` }, { status: 400 });
     const [example] = await sql`
-      insert into email_examples (label, subject, body) values (${label}, ${subject}, ${parsed.body}) returning *
+      insert into email_examples (label, subject, body, program) values (${label}, ${subject}, ${parsed.body}, ${b.program}) returning *
     `;
     return NextResponse.json({ example });
   } catch (err) {

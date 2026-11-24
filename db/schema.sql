@@ -209,9 +209,10 @@ create table if not exists outlook_connections (
   updated_at         timestamptz default now()
 );
 
--- Saved outreach drafts (one current draft per prospect) and example emails.
+-- Saved outreach drafts (one current draft per prospect PER PROGRAM) and example emails.
 create table if not exists outreach_drafts (
-  prospect_id       uuid primary key references prospects(id) on delete cascade,
+  prospect_id       uuid not null references prospects(id) on delete cascade,
+  program           text not null default 'reigrove',
   subject           text not null,
   body              text not null,
   offer_type        text,
@@ -220,13 +221,26 @@ create table if not exists outreach_drafts (
   source            text,
   outlook_saved_at  timestamptz,
   created_at        timestamptz default now(),
-  updated_at        timestamptz default now()
+  updated_at        timestamptz default now(),
+  constraint outreach_drafts_prospect_program_key primary key (prospect_id, program)
 );
+
+-- If outreach_drafts already existed from the earlier one-draft-per-prospect version:
+alter table outreach_drafts add column if not exists program text not null default 'reigrove';
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'outreach_drafts_prospect_program_key') then
+    alter table outreach_drafts drop constraint if exists outreach_drafts_pkey;
+    alter table outreach_drafts add constraint outreach_drafts_prospect_program_key primary key (prospect_id, program);
+  end if;
+end $$;
 
 create table if not exists email_examples (
   id          uuid primary key default gen_random_uuid(),
   label       text,
   subject     text,
   body        text not null,
+  program     text not null default 'reigrove',
   created_at  timestamptz default now()
 );
+alter table email_examples add column if not exists program text not null default 'reigrove';

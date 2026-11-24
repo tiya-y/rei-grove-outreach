@@ -70,7 +70,8 @@ export function ensureOutreachSchema(): Promise<void> {
     ensuredOutreach = (async () => {
       await sql`
         create table if not exists outreach_drafts (
-          prospect_id       uuid primary key references prospects(id) on delete cascade,
+          prospect_id       uuid not null references prospects(id) on delete cascade,
+          program           text not null default 'reigrove',
           subject           text not null,
           body              text not null,
           offer_type        text,
@@ -79,8 +80,20 @@ export function ensureOutreachSchema(): Promise<void> {
           source            text,
           outlook_saved_at  timestamptz,
           created_at        timestamptz default now(),
-          updated_at        timestamptz default now()
+          updated_at        timestamptz default now(),
+          constraint outreach_drafts_prospect_program_key primary key (prospect_id, program)
         )
+      `;
+      // Upgrade a table created before drafts were per program (one row per prospect).
+      await sql`alter table outreach_drafts add column if not exists program text not null default 'reigrove'`;
+      await sql`
+        do $$
+        begin
+          if not exists (select 1 from pg_constraint where conname = 'outreach_drafts_prospect_program_key') then
+            alter table outreach_drafts drop constraint if exists outreach_drafts_pkey;
+            alter table outreach_drafts add constraint outreach_drafts_prospect_program_key primary key (prospect_id, program);
+          end if;
+        end $$
       `;
       await sql`
         create table if not exists email_examples (
@@ -88,9 +101,11 @@ export function ensureOutreachSchema(): Promise<void> {
           label       text,
           subject     text,
           body        text not null,
+          program     text not null default 'reigrove',
           created_at  timestamptz default now()
         )
       `;
+      await sql`alter table email_examples add column if not exists program text not null default 'reigrove'`;
     })().catch((err) => {
       ensuredOutreach = null;
       throw new Error(`Could not create the outreach_drafts / email_examples tables (${err instanceof Error ? err.message : 'unknown error'}). Run the migration in db/schema.sql by hand.`);

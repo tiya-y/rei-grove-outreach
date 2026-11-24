@@ -33,7 +33,12 @@ so it stays accurate to REI Grove's current brand, tiers, and voice.
   research notes, you review and edit before saving. Every new prospect (manual, n8n, or discovered) is
   checked against the competitor blocklist from partnership-prospector (extend the list in
   Settings without a redeploy). Once scored and qualified, **approve** a prospect to move it into Outreach.
-- **Outreach** — check off the people you want to email and click **Generate initial emails**. Each email is saved
+- **Outreach** — pick the affiliate program (**REI Grove**, **Innago**, or **Both**), check off the people you want to
+  email, and click **Generate initial emails**. The two programs have different offers, links, examples, and checks
+  (Innago: 25% of payment fees for a referred landlord's first 12 months, linking innago.com/affiliate-program/; REI Grove:
+  $75 per annual signup, $5/month, 60-90 day cookie). "Both" writes two separate emails per person, and a REI Grove email
+  can never mention Innago or the reverse. Each person's first email per program can be generated once it hasn't been sent.
+  Check off the people you want to email and click **Generate initial emails**. Each email is saved
   as that person's draft (open a row to review or edit it), and **Save to Outlook drafts** puts the checked ones in
   your own Drafts folder. The initial email to a creator/affiliate prospect is written from the **example emails**
   you add at the top of the tab (paste text or upload .txt/.md/.eml), matching their voice; with no examples it

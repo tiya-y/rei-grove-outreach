@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { unsubscribeFooter } from '@/lib/outreachSend';
 import { getDraft, markDraftInOutlook, saveDraft } from '@/lib/draftStore';
-import { AFFILIATE_OFFER } from '@/lib/outreachTemplates';
+import { toProgram, PROGRAMS } from '@/lib/affiliatePrograms';
 import { createDraft, getAccessToken, getConnection, isOutlookConfigured, readSession, OutlookReconnectError, SESSION_COOKIE } from '@/lib/outlook';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 // draft in Outlook, review it, and send it themselves, then click "Mark as
 // sent" in the app. The unsubscribe footer is added here so the draft matches
 // what "Mark as sent" records.
-// Body: { prospectId, subject?, body? }. Without subject/body, the prospect's
+// Body: { prospectId, program?, subject?, body? }. Without subject/body, the prospect's
 // saved draft is used (that is how the Outreach tab saves several at once).
 // "[Your Name]" is replaced with the connected Microsoft account's name.
 export async function POST(req: NextRequest) {
@@ -27,12 +27,13 @@ export async function POST(req: NextRequest) {
 
   const input = await req.json();
   const { prospectId } = input;
+  const program = toProgram(input.program);
   if (!prospectId) return NextResponse.json({ error: 'prospectId is required' }, { status: 400 });
 
   let subject: string | undefined = input.subject;
   let body: string | undefined = input.body;
   if (!subject || !body) {
-    const saved = await getDraft(prospectId).catch(() => null);
+    const saved = await getDraft(prospectId, program).catch(() => null);
     subject = subject || saved?.subject;
     body = body || saved?.body;
   }
@@ -59,14 +60,14 @@ export async function POST(req: NextRequest) {
       toEmail: prospect.email,
       toName,
       subject: String(subject),
-      bodyText: (conn.display_name ? String(body).split(AFFILIATE_OFFER.namePlaceholder).join(conn.display_name) : String(body)) + unsubscribeFooter(prospectId),
+      bodyText: (conn.display_name ? String(body).split(PROGRAMS[program].namePlaceholder).join(conn.display_name) : String(body)) + unsubscribeFooter(prospectId),
     });
 
     // Keep the stored draft in step with what was just saved to Outlook.
     if (input.subject && input.body) {
-      await saveDraft(prospectId, { subject: String(subject), body: String(body), offerType: input.offerType, sequenceStep: input.sequenceStep ?? 1, aiGenerated: Boolean(input.aiGenerated) }).catch(() => undefined);
+      await saveDraft(prospectId, { subject: String(subject), body: String(body), program, offerType: input.offerType, sequenceStep: input.sequenceStep ?? 1, aiGenerated: Boolean(input.aiGenerated) }).catch(() => undefined);
     }
-    await markDraftInOutlook(prospectId).catch(() => undefined);
+    await markDraftInOutlook(prospectId, program).catch(() => undefined);
 
     await sql`
       insert into activity_log (prospect_id, event_type, detail)

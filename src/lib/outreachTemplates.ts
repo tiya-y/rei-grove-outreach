@@ -62,3 +62,53 @@ export function renderAffiliateInitialEmail(ctx: AffiliateTemplateContext): { su
     body: fillTemplate(BODY_TEMPLATE, ctx),
   };
 }
+
+// ── Innago affiliate program ─────────────────────────────────────────────────
+// A separate program with its own offer, taken from innago.com/affiliate-program
+// (read directly): 25% of every payment fee for each referred landlord's first
+// 12 months, free for landlords, instant link after a quick signup, PayPal
+// payout at a $25 balance. The page link (which has the earnings calculator)
+// is the one link in the email. No earnings figures are stated in the email,
+// because the page's estimates depend on the inputs a person chooses.
+
+export const INNAGO_OFFER = {
+  infoUrl: 'https://innago.com/affiliate-program/',
+  namePlaceholder: '[Your Name]',
+  signature: 'Innago Affiliate Program',
+  terms: [
+    '25% of every payment fee, every month, for the first 12 months each referred landlord uses Innago',
+    'Innago is completely free for landlords, no contracts, so there is nothing to sell',
+    'No approval wait: you get your referral link right away after a quick signup',
+    'Paid through PayPal once your balance reaches $25',
+  ],
+};
+
+const INNAGO_SUBJECT_TEMPLATE = 'A free tool your {{audienceLabel}} audience might actually use';
+
+const INNAGO_BODY_TEMPLATE = `Hi {{firstName}},
+
+I'll keep this short, I know your inbox is full of pitches.
+
+Innago is free rental property management software for landlords: online rent collection, tenant screening, leases, and maintenance tracking in one place, with no contracts. It's rated 4.9/5 on Capterra.
+
+We have an affiliate program, and your work with {{audienceLabel}} made you an easy yes for us.
+
+Here's the offer:
+- 25% of every payment fee, every month, for each landlord's first 12 months
+- Free for landlords, so there's nothing to sell
+- No approval wait, you get your link right away
+- Paid through PayPal once your balance reaches $25
+
+See the details and an earnings calculator here: ${INNAGO_OFFER.infoUrl}
+Just reply here if you have any questions.
+
+Best,
+${INNAGO_OFFER.namePlaceholder}
+${INNAGO_OFFER.signature}`;
+
+export function renderInnagoAffiliateInitialEmail(ctx: AffiliateTemplateContext): { subject: string; body: string } {
+  return {
+    subject: fillTemplate(INNAGO_SUBJECT_TEMPLATE, ctx),
+    body: fillTemplate(INNAGO_BODY_TEMPLATE, ctx),
+  };
+}

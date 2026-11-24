@@ -1,24 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDraft, saveDraft } from '@/lib/draftStore';
+import { isProgramKey } from '@/lib/affiliatePrograms';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/prospects/[id]/draft — the saved draft, if any.
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+// GET /api/prospects/[id]/draft?program=reigrove|innago — the saved draft, if any.
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const raw = req.nextUrl.searchParams.get('program');
+  const program = isProgramKey(raw) ? raw : 'reigrove';
   try {
-    return NextResponse.json({ draft: await getDraft(params.id) });
+    return NextResponse.json({ draft: await getDraft(params.id, program) });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Query failed' }, { status: 500 });
   }
 }
 
 // PUT /api/prospects/[id]/draft — save edits to the draft.
-// Body: { subject, body, offerType?, sequenceStep?, aiGenerated? }
+// Body: { subject, body, program?, offerType?, sequenceStep?, aiGenerated? }
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const b = await req.json();
   if (!b.subject || !b.body) return NextResponse.json({ error: 'subject and body are required' }, { status: 400 });
   try {
-    const draft = await saveDraft(params.id, { subject: String(b.subject), body: String(b.body), offerType: b.offerType, sequenceStep: b.sequenceStep, aiGenerated: b.aiGenerated });
+    const draft = await saveDraft(params.id, {
+      subject: String(b.subject),
+      body: String(b.body),
+      program: isProgramKey(b.program) ? b.program : 'reigrove',
+      offerType: b.offerType,
+      sequenceStep: b.sequenceStep,
+      aiGenerated: b.aiGenerated,
+    });
     return NextResponse.json({ draft });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Save failed' }, { status: 500 });

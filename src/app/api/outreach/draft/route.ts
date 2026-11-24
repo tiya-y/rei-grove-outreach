@@ -3,6 +3,7 @@ import { sql } from '@/lib/db';
 import { generateOutreachEmail } from '@/lib/claude';
 import { generateInitialDraft } from '@/lib/outreachDraft';
 import { saveDraft } from '@/lib/draftStore';
+import { toProgram, PROGRAMS } from '@/lib/affiliatePrograms';
 import { CREATOR_DISCOVERY_NICHES } from '@/lib/rei-grove-content';
 import type { Prospect } from '@/types';
 
@@ -10,7 +11,7 @@ export const maxDuration = 60;
 
 // POST /api/outreach/draft — generate copy for one prospect (used by the
 // composer on a prospect's page). Nothing is sent.
-// Body: { prospectId, offerType?, sequenceStep?, save? }
+// Body: { prospectId, offerType?, sequenceStep?, program?, save? }
 //
 // The initial email (sequenceStep 1) to a creator/affiliate prospect is built
 // by lib/outreachDraft.ts: the fixed affiliate template, or Claude writing from
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest) {
   }
 
   const sequenceStep = body.sequenceStep ?? 1;
+  const program = toProgram(body.program);
   const isCreatorOrAffiliate = prospect.prospect_type === 'creator' || prospect.prospect_type === 'affiliate';
 
   try {
@@ -42,7 +44,7 @@ export async function POST(req: NextRequest) {
     let aiGenerated = true;
 
     if (isCreatorOrAffiliate && sequenceStep === 1) {
-      draft = await generateInitialDraft(prospect as Prospect);
+      draft = await generateInitialDraft(prospect as Prospect, program);
       aiGenerated = draft.source === 'examples';
     } else {
       draft = {
@@ -62,7 +64,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.save) {
-      await saveDraft(prospect.id, { subject: draft.subject, body: draft.body, offerType: body.offerType, sequenceStep, aiGenerated, source: draft.source });
+      await saveDraft(prospect.id, { subject: draft.subject, body: draft.body, program: isCreatorOrAffiliate && sequenceStep === 1 ? program : 'reigrove', offerType: isCreatorOrAffiliate && sequenceStep === 1 ? PROGRAMS[program].offerType : body.offerType, sequenceStep, aiGenerated, source: draft.source });
     }
     return NextResponse.json({ draft: { ...draft, aiGenerated } });
   } catch (err) {

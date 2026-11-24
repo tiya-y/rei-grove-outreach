@@ -3,12 +3,14 @@
 import { useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import useSWRLike from '@/lib/useSWRLike';
+import { PROGRAMS, PROGRAM_KEYS, type ProgramKey } from '@/lib/affiliatePrograms';
 
 interface Example {
   id: string;
   label: string | null;
   subject: string | null;
   body: string;
+  program: ProgramKey;
 }
 
 // Where the team's own example emails are added. New initial emails are
@@ -19,6 +21,7 @@ export default function EmailExamples() {
   const [pasted, setPasted] = useState('');
   const [label, setLabel] = useState('');
   const [saving, setSaving] = useState(false);
+  const [program, setProgram] = useState<ProgramKey>('reigrove');
   const fileRef = useRef<HTMLInputElement>(null);
   const examples = data?.examples ?? [];
 
@@ -26,7 +29,7 @@ export default function EmailExamples() {
     const res = await fetch('/api/outreach/examples', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, label: name }),
+      body: JSON.stringify({ text, label: name, program }),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error);
@@ -77,15 +80,20 @@ export default function EmailExamples() {
       <summary className="cursor-pointer font-semibold text-gray-900">
         Example emails{' '}
         <span className="text-sm font-normal text-gray-500">
-          {loading ? '' : examples.length === 0 ? '(none yet, using the fixed template)' : `(${examples.length}, new emails are written in this style)`}
+          {loading
+            ? ''
+            : examples.length === 0
+              ? '(none yet, using the fixed templates)'
+              : `(${PROGRAM_KEYS.map((k) => `${PROGRAMS[k].label}: ${examples.filter((e) => e.program === k).length}`).join(', ')})`}
         </span>
       </summary>
 
       <div className="mt-3 space-y-4 text-sm">
         <p className="text-gray-500">
           Add emails you have sent or like. New initial emails copy their voice and structure, personalized for each person. The offer terms ($75 per
-          annual signup, $5/month, 60-90 day cookie) and the REI Grove link are fixed and checked on every email, even if an example says
-          something different. Upload plain text files (.txt, .md, .eml) or paste the text below.
+          annual signup, $5/month, 60-90 day cookie for REI Grove; 25% of payment fees for 12 months for Innago) and each program&apos;s link are
+          fixed and checked on every email, even if an example says something different. Examples are kept per program, so pick which program an
+          example is for before adding it. Upload plain text files (.txt, .md, .eml) or paste the text below.
         </p>
 
         {examples.length > 0 && (
@@ -93,7 +101,10 @@ export default function EmailExamples() {
             {examples.map((e) => (
               <li key={e.id} className="flex items-start justify-between gap-3 p-3">
                 <div className="min-w-0">
-                  <div className="font-medium text-gray-800">{e.label || e.subject || 'Untitled example'}</div>
+                  <div className="font-medium text-gray-800">
+                    {e.label || e.subject || 'Untitled example'}{' '}
+                    <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-normal text-gray-600">{PROGRAMS[e.program]?.label ?? e.program}</span>
+                  </div>
                   {e.subject && e.label && <div className="text-xs text-gray-500">Subject: {e.subject}</div>}
                   <div className="mt-1 line-clamp-2 whitespace-pre-wrap text-xs text-gray-500">{e.body}</div>
                 </div>
@@ -106,6 +117,14 @@ export default function EmailExamples() {
         )}
 
         <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-600">Add an example for:</span>
+            {PROGRAM_KEYS.map((k) => (
+              <button key={k} type="button" className={program === k ? 'btn-primary' : 'btn-secondary'} onClick={() => setProgram(k)}>
+                {PROGRAMS[k].label}
+              </button>
+            ))}
+          </div>
           <input ref={fileRef} type="file" multiple accept=".txt,.md,.eml,.text,text/plain" onChange={(e) => addFiles(e.target.files)} disabled={saving} className="text-xs" />
           <input className="input" placeholder="Name for this example (optional)" value={label} onChange={(e) => setLabel(e.target.value)} />
           <textarea

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { recordSentOutreach } from '@/lib/outreachSend';
 import { deleteDraft } from '@/lib/draftStore';
+import { toProgram, PROGRAMS } from '@/lib/affiliatePrograms';
 
 // POST /api/outreach/send — records an outreach email as "sent" and
 // advances the pipeline. This app never sends email itself — whoever is
@@ -10,7 +11,9 @@ import { deleteDraft } from '@/lib/draftStore';
 // "reached_out" only if this is the initial send (stage was "approved");
 // marking a manual follow-up sent from a later stage like "replied" leaves
 // the stage as-is.
-// Body: { prospectId, subject, body, offerType?, sequenceStep? }
+// Body: { prospectId, subject, body, program?, offerType?, sequenceStep? }
+// program says which affiliate program's email this was (REI Grove or Innago),
+// recorded on the message so the Outreach tab knows which first emails are out.
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const { prospectId, subject, body: emailBody, offerType, sequenceStep } = body;
@@ -30,18 +33,22 @@ export async function POST(req: NextRequest) {
   if (prospect.disqualified) return NextResponse.json({ error: `Prospect is disqualified (${prospect.disqualify_reason})` }, { status: 400 });
   if (prospect.unsubscribed) return NextResponse.json({ error: 'This prospect has unsubscribed — recording a send is blocked.' }, { status: 400 });
 
+  const isInitialAffiliate = (prospect.prospect_type === 'creator' || prospect.prospect_type === 'affiliate') && (sequenceStep ?? 1) === 1;
+  const program = toProgram(body.program);
+  const recordedOfferType = isInitialAffiliate ? PROGRAMS[program].offerType : offerType;
+
   try {
     const message = await recordSentOutreach({
       prospectId,
       subject,
       bodyText: emailBody,
-      offerType,
+      offerType: recordedOfferType,
       sequenceStep: sequenceStep ?? 1,
       aiGenerated: Boolean(body.aiGenerated),
       activityDetail: `Marked "${subject}" as sent`,
     });
     // The email is out, so the working draft is no longer needed.
-    await deleteDraft(prospectId).catch(() => undefined);
+    await deleteDraft(prospectId, program).catch(() => undefined);
     return NextResponse.json({ message });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to record sent message' }, { status: 500 });

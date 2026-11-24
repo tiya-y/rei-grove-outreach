@@ -6,6 +6,7 @@ import useSWRLike from '@/lib/useSWRLike';
 import { ACTIVATION_CHANNELS } from '@/lib/rei-grove-content';
 import type { Prospect } from '@/types';
 import { isFullyQualified } from '@/types';
+import { PROGRAMS, PROGRAM_KEYS, type ProgramKey } from '@/lib/affiliatePrograms';
 
 interface OutlookStatus {
   configured: boolean;
@@ -13,10 +14,24 @@ interface OutlookStatus {
   email: string | null;
 }
 
-export default function OutreachComposer({ prospect, onSent, onEnriched }: { prospect: Prospect; onSent: () => void; onEnriched?: () => void }) {
+export default function OutreachComposer({
+  prospect,
+  onSent,
+  onEnriched,
+  initialProgram = 'reigrove',
+}: {
+  prospect: Prospect;
+  onSent: () => void;
+  onEnriched?: () => void;
+  initialProgram?: ProgramKey;
+}) {
   const offerTypeDefault = prospect.prospect_type === 'partner' ? 'webinar' : 'affiliate_terms';
   const [offerType, setOfferType] = useState(offerTypeDefault);
   const [sequenceStep, setSequenceStep] = useState(1);
+  const [programChoice, setProgramChoice] = useState<ProgramKey>(initialProgram);
+  // Which affiliate program the email is for only applies to the first email to a creator or affiliate.
+  const usesProgram = prospect.prospect_type !== 'partner' && sequenceStep === 1;
+  const program: ProgramKey = usesProgram ? programChoice : 'reigrove';
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [drafting, setDrafting] = useState(false);
@@ -32,14 +47,23 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
   // Pick up a draft that was already generated (for example from the Outreach tab).
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/prospects/${prospect.id}/draft`)
+    fetch(`/api/prospects/${prospect.id}/draft?program=${program}`)
       .then((r) => r.json())
       .then((json) => {
         const d = json.draft;
-        if (cancelled || !d) return;
+        if (cancelled) return;
+        if (!d) {
+          // Nothing saved for this program: start clean rather than showing the other program's text.
+          setSubject('');
+          setBody('');
+          setDraftSource(null);
+          setOutlookSavedAt(null);
+          setSavedDraft(null);
+          return;
+        }
         setSubject(d.subject);
         setBody(d.body);
-        setOfferType(d.offer_type ?? offerTypeDefault);
+        setOfferType(ACTIVATION_CHANNELS.some((c) => c.key === d.offer_type) ? d.offer_type : offerTypeDefault);
         setSequenceStep(d.sequence_step ?? 1);
         setAiGenerated(Boolean(d.ai_generated));
         setDraftSource(d.source ?? null);
@@ -50,7 +74,7 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prospect.id]);
+  }, [prospect.id, program]);
 
   // Keep edits so they survive leaving the page.
   async function persistEdits() {
@@ -59,7 +83,7 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
       await fetch(`/api/prospects/${prospect.id}/draft`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject, body, offerType, sequenceStep, aiGenerated }),
+        body: JSON.stringify({ subject, body, program, offerType, sequenceStep, aiGenerated }),
       });
     } catch {
       // Not critical: the text is still on screen.
@@ -94,7 +118,7 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
       const res = await fetch('/api/outreach/draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prospectId: prospect.id, offerType, sequenceStep, save: true }),
+        body: JSON.stringify({ prospectId: prospect.id, offerType, sequenceStep, program, save: true }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
@@ -134,7 +158,7 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
       const res = await fetch('/api/outreach/outlook-draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prospectId: prospect.id, subject, body, offerType, sequenceStep, aiGenerated }),
+        body: JSON.stringify({ prospectId: prospect.id, subject, body, program, offerType, sequenceStep, aiGenerated }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -161,7 +185,7 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
       const res = await fetch('/api/outreach/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prospectId: prospect.id, subject, body, offerType, sequenceStep, aiGenerated }),
+        body: JSON.stringify({ prospectId: prospect.id, subject, body, program, offerType, sequenceStep, aiGenerated }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
@@ -207,6 +231,25 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
         </div>
       )}
 
+      {usesProgram && (
+        <div>
+          <label className="label">Affiliate program for this email</label>
+          <div className="flex gap-2">
+            {PROGRAM_KEYS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setProgramChoice(k)}
+                className={programChoice === k ? 'btn-primary' : 'btn-secondary'}
+              >
+                {PROGRAMS[k].label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-gray-400">Each program has its own offer, link, and drafts. A person can get both emails.</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="label">Offer / activation channel</label>
@@ -236,9 +279,9 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
       {draftSource && (
         <p className="text-xs text-gray-500">
           {draftSource === 'examples'
-            ? 'Written from your example emails. The offer terms and links are fixed and checked.'
+            ? `Written from your ${PROGRAMS[program].label} example emails. The offer terms and links are fixed and checked.`
             : draftSource === 'template'
-              ? 'Built from the fixed affiliate template (no example emails uploaded yet).'
+              ? `Built from the fixed ${PROGRAMS[program].label} affiliate template (no ${PROGRAMS[program].label} example emails uploaded yet).`
               : 'Written by Claude.'}
           {outlookSavedAt ? ' Saved to your Outlook Drafts.' : ''}
         </p>
