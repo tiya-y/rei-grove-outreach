@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { generateOutreachEmail } from '@/lib/claude';
-import { renderAffiliateInitialEmail } from '@/lib/outreachTemplates';
-import { CREATOR_DISCOVERY_NICHES, DEFAULT_AUDIENCE_LABEL } from '@/lib/rei-grove-content';
+import { generateInitialDraft } from '@/lib/outreachDraft';
+import { saveDraft } from '@/lib/draftStore';
+import { CREATOR_DISCOVERY_NICHES } from '@/lib/rei-grove-content';
+import type { Prospect } from '@/types';
 
-// POST /api/outreach/draft — generate copy without sending or saving.
-// Body: { prospectId, offerType?, sequenceStep? }
+export const maxDuration = 60;
+
+// POST /api/outreach/draft — generate copy for one prospect (used by the
+// composer on a prospect's page). Nothing is sent.
+// Body: { prospectId, offerType?, sequenceStep?, save? }
 //
-// The initial email (sequenceStep 1) to a creator/affiliate prospect uses
-// the team's fixed affiliate-offer template (see lib/outreachTemplates.ts)
-// rather than an AI draft, so the compensation terms and links never drift.
-// Partner-type prospects, and every follow-up step, still go through Claude.
+// The initial email (sequenceStep 1) to a creator/affiliate prospect is built
+// by lib/outreachDraft.ts: the fixed affiliate template, or Claude writing from
+// the example emails the team uploaded, with the offer terms and links checked
+// in code. Partner-type prospects and every follow-up step go through Claude's
+// general drafting prompt. With save: true the result is also stored as the
+// prospect's current draft.
 export async function POST(req: NextRequest) {
   const body = await req.json();
   if (!body.prospectId) return NextResponse.json({ error: 'prospectId is required' }, { status: 400 });
@@ -30,28 +37,34 @@ export async function POST(req: NextRequest) {
   const sequenceStep = body.sequenceStep ?? 1;
   const isCreatorOrAffiliate = prospect.prospect_type === 'creator' || prospect.prospect_type === 'affiliate';
 
-  if (isCreatorOrAffiliate && sequenceStep === 1) {
-    const audienceLabel = CREATOR_DISCOVERY_NICHES.find((n) => n.key === prospect.niche)?.audienceLabel ?? DEFAULT_AUDIENCE_LABEL;
-    const draft = renderAffiliateInitialEmail({
-      firstName: prospect.contact_first_name ?? 'there',
-      audienceLabel,
-    });
-    return NextResponse.json({ draft });
-  }
-
   try {
-    const draft = await generateOutreachEmail({
-      prospectName: prospect.name,
-      prospectType: prospect.prospect_type,
-      contactFirstName: prospect.contact_first_name ?? undefined,
-      category: prospect.category ?? undefined,
-      niche: CREATOR_DISCOVERY_NICHES.find((n) => n.key === prospect.niche)?.label ?? prospect.niche ?? undefined,
-      website: prospect.website ?? undefined,
-      contentNotes: prospect.content_presence ?? prospect.notes ?? undefined,
-      offerType: body.offerType,
-      sequenceStep,
-    });
-    return NextResponse.json({ draft });
+    let draft: { subject: string; body: string; source?: string };
+    let aiGenerated = true;
+
+    if (isCreatorOrAffiliate && sequenceStep === 1) {
+      draft = await generateInitialDraft(prospect as Prospect);
+      aiGenerated = draft.source === 'examples';
+    } else {
+      draft = {
+        ...(await generateOutreachEmail({
+          prospectName: prospect.name,
+          prospectType: prospect.prospect_type,
+          contactFirstName: prospect.contact_first_name ?? undefined,
+          category: prospect.category ?? undefined,
+          niche: CREATOR_DISCOVERY_NICHES.find((n) => n.key === prospect.niche)?.label ?? prospect.niche ?? undefined,
+          website: prospect.website ?? undefined,
+          contentNotes: prospect.content_presence ?? prospect.notes ?? undefined,
+          offerType: body.offerType,
+          sequenceStep,
+        })),
+        source: 'claude',
+      };
+    }
+
+    if (body.save) {
+      await saveDraft(prospect.id, { subject: draft.subject, body: draft.body, offerType: body.offerType, sequenceStep, aiGenerated, source: draft.source });
+    }
+    return NextResponse.json({ draft: { ...draft, aiGenerated } });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Draft generation failed' }, { status: 500 });
   }

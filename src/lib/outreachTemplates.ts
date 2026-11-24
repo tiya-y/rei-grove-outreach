@@ -12,6 +12,18 @@
 // as any other manually-reviewed draft.
 // ============================================================
 
+// The facts every initial affiliate email must carry, whether it comes from
+// the fixed template below or is written by Claude from the user's examples.
+// The example-based generator is checked against these in code (see
+// outreachDraft.ts), so the numbers and links can't drift either way.
+export const AFFILIATE_OFFER = {
+  siteUrl: 'https://reigrove.com',
+  applyPlaceholder: '[affiliate application link]',
+  namePlaceholder: '[Your Name]',
+  signature: 'REI Grove Partnerships',
+  terms: ['$75 per annual signup', '$5/month for every monthly signup', '60-90 day cookie window'],
+};
+
 export interface AffiliateTemplateContext {
   firstName: string;
   audienceLabel: string;

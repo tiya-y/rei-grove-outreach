@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import useSWRLike from '@/lib/useSWRLike';
 import { ACTIVATION_CHANNELS } from '@/lib/rei-grove-content';
@@ -14,7 +14,8 @@ interface OutlookStatus {
 }
 
 export default function OutreachComposer({ prospect, onSent, onEnriched }: { prospect: Prospect; onSent: () => void; onEnriched?: () => void }) {
-  const [offerType, setOfferType] = useState(prospect.prospect_type === 'partner' ? 'webinar' : 'affiliate_terms');
+  const offerTypeDefault = prospect.prospect_type === 'partner' ? 'webinar' : 'affiliate_terms';
+  const [offerType, setOfferType] = useState(offerTypeDefault);
   const [sequenceStep, setSequenceStep] = useState(1);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
@@ -24,7 +25,48 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
   const [enriching, setEnriching] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [savedDraft, setSavedDraft] = useState<{ webLink: string | null; mailbox: string } | null>(null);
+  const [draftSource, setDraftSource] = useState<string | null>(null);
+  const [outlookSavedAt, setOutlookSavedAt] = useState<string | null>(null);
   const { data: outlook, refresh: refreshOutlook } = useSWRLike<OutlookStatus>('/api/auth/microsoft/status');
+
+  // Pick up a draft that was already generated (for example from the Outreach tab).
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/prospects/${prospect.id}/draft`)
+      .then((r) => r.json())
+      .then((json) => {
+        const d = json.draft;
+        if (cancelled || !d) return;
+        setSubject(d.subject);
+        setBody(d.body);
+        setOfferType(d.offer_type ?? offerTypeDefault);
+        setSequenceStep(d.sequence_step ?? 1);
+        setAiGenerated(Boolean(d.ai_generated));
+        setDraftSource(d.source ?? null);
+        setOutlookSavedAt(d.outlook_saved_at ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prospect.id]);
+
+  // Keep edits so they survive leaving the page.
+  async function persistEdits() {
+    if (!subject.trim() || !body.trim()) return;
+    try {
+      await fetch(`/api/prospects/${prospect.id}/draft`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject, body, offerType, sequenceStep, aiGenerated }),
+      });
+    } catch {
+      // Not critical: the text is still on screen.
+    }
+  }
+
+  const placeholders = Array.from(new Set(body.match(/\[[^\]\n]{2,40}\]/g) ?? []));
 
   const missingEmail = !prospect.disqualified && !prospect.unsubscribed && !prospect.email;
   const canReveal = missingEmail && isFullyQualified(prospect);
@@ -52,14 +94,16 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
       const res = await fetch('/api/outreach/draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prospectId: prospect.id, offerType, sequenceStep }),
+        body: JSON.stringify({ prospectId: prospect.id, offerType, sequenceStep, save: true }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setSubject(json.draft.subject);
       setBody(json.draft.body);
-      setAiGenerated(true);
-      toast.success('Draft generated — review before copying.');
+      setAiGenerated(Boolean(json.draft.aiGenerated));
+      setDraftSource(json.draft.source ?? null);
+      setOutlookSavedAt(null);
+      toast.success('Draft generated. Review it before sending.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Draft generation failed');
     } finally {
@@ -90,7 +134,7 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
       const res = await fetch('/api/outreach/outlook-draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prospectId: prospect.id, subject, body }),
+        body: JSON.stringify({ prospectId: prospect.id, subject, body, offerType, sequenceStep, aiGenerated }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -98,6 +142,7 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
         throw new Error(json.error);
       }
       setSavedDraft({ webLink: json.draft.webLink, mailbox: json.mailbox });
+      setOutlookSavedAt(new Date().toISOString());
       toast.success(`Saved to ${json.mailbox} Drafts. Review and send it from Outlook.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not save the draft');
@@ -125,6 +170,8 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
       setBody('');
       setAiGenerated(false);
       setSavedDraft(null);
+      setDraftSource(null);
+      setOutlookSavedAt(null);
       onSent();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to record send');
@@ -183,17 +230,37 @@ export default function OutreachComposer({ prospect, onSent, onEnriched }: { pro
       </div>
 
       <button className="btn-secondary" onClick={draft} disabled={drafting || blocked}>
-        {drafting ? 'Drafting…' : 'Generate draft with Claude'}
+        {drafting ? 'Drafting…' : 'Generate draft'}
       </button>
 
+      {draftSource && (
+        <p className="text-xs text-gray-500">
+          {draftSource === 'examples'
+            ? 'Written from your example emails. The offer terms and links are fixed and checked.'
+            : draftSource === 'template'
+              ? 'Built from the fixed affiliate template (no example emails uploaded yet).'
+              : 'Written by Claude.'}
+          {outlookSavedAt ? ' Saved to your Outlook Drafts.' : ''}
+        </p>
+      )}
       <div>
         <label className="label">Subject</label>
-        <input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} />
+        <input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} onBlur={persistEdits} />
       </div>
       <div>
         <label className="label">Body</label>
-        <textarea className="input" rows={10} value={body} onChange={(e) => setBody(e.target.value)} />
+        <textarea className="input" rows={10} value={body} onChange={(e) => setBody(e.target.value)} onBlur={persistEdits} />
       </div>
+      {placeholders.length > 0 && (
+        <div className="rounded bg-amber-50 p-3 text-xs text-amber-800">
+          Fill these in before sending: {placeholders.map((ph) => (
+            <code key={ph} className="mr-1 rounded bg-amber-100 px-1">
+              {ph}
+            </code>
+          ))}
+          {placeholders.includes('[Your Name]') && outlook?.connected ? ' ([Your Name] is filled in automatically when you save to Outlook.)' : ''}
+        </div>
+      )}
 
       {outlook?.configured && (
         <div className="flex flex-wrap items-center gap-3 text-sm">

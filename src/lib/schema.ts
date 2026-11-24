@@ -60,3 +60,41 @@ export function ensureOutlookSchema(): Promise<void> {
   }
   return ensuredOutlook;
 }
+
+// Saved outreach drafts (one current draft per prospect) and the example
+// emails the generator is based on.
+let ensuredOutreach: Promise<void> | null = null;
+
+export function ensureOutreachSchema(): Promise<void> {
+  if (!ensuredOutreach) {
+    ensuredOutreach = (async () => {
+      await sql`
+        create table if not exists outreach_drafts (
+          prospect_id       uuid primary key references prospects(id) on delete cascade,
+          subject           text not null,
+          body              text not null,
+          offer_type        text,
+          sequence_step     int default 1,
+          ai_generated      boolean default false,
+          source            text,
+          outlook_saved_at  timestamptz,
+          created_at        timestamptz default now(),
+          updated_at        timestamptz default now()
+        )
+      `;
+      await sql`
+        create table if not exists email_examples (
+          id          uuid primary key default gen_random_uuid(),
+          label       text,
+          subject     text,
+          body        text not null,
+          created_at  timestamptz default now()
+        )
+      `;
+    })().catch((err) => {
+      ensuredOutreach = null;
+      throw new Error(`Could not create the outreach_drafts / email_examples tables (${err instanceof Error ? err.message : 'unknown error'}). Run the migration in db/schema.sql by hand.`);
+    });
+  }
+  return ensuredOutreach;
+}

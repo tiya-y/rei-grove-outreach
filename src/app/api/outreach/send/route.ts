@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { recordSentOutreach } from '@/lib/outreachSend';
+import { deleteDraft } from '@/lib/draftStore';
 
 // POST /api/outreach/send — records an outreach email as "sent" and
 // advances the pipeline. This app never sends email itself — whoever is
@@ -39,6 +40,8 @@ export async function POST(req: NextRequest) {
       aiGenerated: Boolean(body.aiGenerated),
       activityDetail: `Marked "${subject}" as sent`,
     });
+    // The email is out, so the working draft is no longer needed.
+    await deleteDraft(prospectId).catch(() => undefined);
     return NextResponse.json({ message });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to record sent message' }, { status: 500 });

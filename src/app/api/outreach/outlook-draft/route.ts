@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { unsubscribeFooter } from '@/lib/outreachSend';
+import { getDraft, markDraftInOutlook, saveDraft } from '@/lib/draftStore';
+import { AFFILIATE_OFFER } from '@/lib/outreachTemplates';
 import { createDraft, getAccessToken, getConnection, isOutlookConfigured, readSession, OutlookReconnectError, SESSION_COOKIE } from '@/lib/outlook';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +12,9 @@ export const dynamic = 'force-dynamic';
 // draft in Outlook, review it, and send it themselves, then click "Mark as
 // sent" in the app. The unsubscribe footer is added here so the draft matches
 // what "Mark as sent" records.
-// Body: { prospectId, subject, body }
+// Body: { prospectId, subject?, body? }. Without subject/body, the prospect's
+// saved draft is used (that is how the Outreach tab saves several at once).
+// "[Your Name]" is replaced with the connected Microsoft account's name.
 export async function POST(req: NextRequest) {
   if (!isOutlookConfigured()) {
     return NextResponse.json({ error: 'Outlook is not set up on the server yet. See Settings.' }, { status: 400 });
@@ -21,10 +25,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Connect your Outlook account first.', reconnect: true }, { status: 401 });
   }
 
-  const { prospectId, subject, body } = await req.json();
-  if (!prospectId || !subject || !body) {
-    return NextResponse.json({ error: 'prospectId, subject, and body are required' }, { status: 400 });
+  const input = await req.json();
+  const { prospectId } = input;
+  if (!prospectId) return NextResponse.json({ error: 'prospectId is required' }, { status: 400 });
+
+  let subject: string | undefined = input.subject;
+  let body: string | undefined = input.body;
+  if (!subject || !body) {
+    const saved = await getDraft(prospectId).catch(() => null);
+    subject = subject || saved?.subject;
+    body = body || saved?.body;
   }
+  if (!subject || !body) return NextResponse.json({ error: 'There is no draft for this prospect yet. Generate one first.' }, { status: 400 });
 
   let prospect;
   try {
@@ -47,8 +59,14 @@ export async function POST(req: NextRequest) {
       toEmail: prospect.email,
       toName,
       subject: String(subject),
-      bodyText: String(body) + unsubscribeFooter(prospectId),
+      bodyText: (conn.display_name ? String(body).split(AFFILIATE_OFFER.namePlaceholder).join(conn.display_name) : String(body)) + unsubscribeFooter(prospectId),
     });
+
+    // Keep the stored draft in step with what was just saved to Outlook.
+    if (input.subject && input.body) {
+      await saveDraft(prospectId, { subject: String(subject), body: String(body), offerType: input.offerType, sequenceStep: input.sequenceStep ?? 1, aiGenerated: Boolean(input.aiGenerated) }).catch(() => undefined);
+    }
+    await markDraftInOutlook(prospectId).catch(() => undefined);
 
     await sql`
       insert into activity_log (prospect_id, event_type, detail)

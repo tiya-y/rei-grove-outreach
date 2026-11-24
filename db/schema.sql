@@ -208,3 +208,25 @@ create table if not exists outlook_connections (
   created_at         timestamptz default now(),
   updated_at         timestamptz default now()
 );
+
+-- Saved outreach drafts (one current draft per prospect) and example emails.
+create table if not exists outreach_drafts (
+  prospect_id       uuid primary key references prospects(id) on delete cascade,
+  subject           text not null,
+  body              text not null,
+  offer_type        text,
+  sequence_step     int default 1,
+  ai_generated      boolean default false,
+  source            text,
+  outlook_saved_at  timestamptz,
+  created_at        timestamptz default now(),
+  updated_at        timestamptz default now()
+);
+
+create table if not exists email_examples (
+  id          uuid primary key default gen_random_uuid(),
+  label       text,
+  subject     text,
+  body        text not null,
+  created_at  timestamptz default now()
+);

@@ -1,0 +1,66 @@
+// ============================================================
+// Saved outreach drafts: one current draft per prospect, so a draft
+// generated from the Outreach tab is still there when the prospect page is
+// opened (and vice versa). Deleted when the email is marked as sent.
+// ============================================================
+
+import { sql } from './db';
+import { ensureOutreachSchema } from './schema';
+
+export interface SavedDraft {
+  prospect_id: string;
+  subject: string;
+  body: string;
+  offer_type: string | null;
+  sequence_step: number;
+  ai_generated: boolean;
+  source: string | null;
+  outlook_saved_at: string | null;
+  updated_at: string;
+}
+
+export async function getDraft(prospectId: string): Promise<SavedDraft | null> {
+  await ensureOutreachSchema();
+  const [row] = await sql`select * from outreach_drafts where prospect_id = ${prospectId}`;
+  return (row as SavedDraft | undefined) ?? null;
+}
+
+export async function saveDraft(
+  prospectId: string,
+  d: { subject: string; body: string; offerType?: string | null; sequenceStep?: number; aiGenerated?: boolean; source?: string | null }
+): Promise<SavedDraft> {
+  await ensureOutreachSchema();
+  // Editing the text invalidates "saved to Outlook", so the flag is reset
+  // unless the caller re-sets it right after (see markDraftInOutlook).
+  const [row] = await sql`
+    insert into outreach_drafts (prospect_id, subject, body, offer_type, sequence_step, ai_generated, source)
+    values (${prospectId}, ${d.subject}, ${d.body}, ${d.offerType ?? null}, ${d.sequenceStep ?? 1}, ${Boolean(d.aiGenerated)}, ${d.source ?? null})
+    on conflict (prospect_id) do update set
+      subject = excluded.subject,
+      body = excluded.body,
+      offer_type = excluded.offer_type,
+      sequence_step = excluded.sequence_step,
+      ai_generated = excluded.ai_generated,
+      source = coalesce(excluded.source, outreach_drafts.source),
+      outlook_saved_at = case when outreach_drafts.subject = excluded.subject and outreach_drafts.body = excluded.body then outreach_drafts.outlook_saved_at else null end,
+      updated_at = now()
+    returning *
+  `;
+  return row as SavedDraft;
+}
+
+export async function markDraftInOutlook(prospectId: string): Promise<void> {
+  await ensureOutreachSchema();
+  await sql`update outreach_drafts set outlook_saved_at = now() where prospect_id = ${prospectId}`;
+}
+
+export async function deleteDraft(prospectId: string): Promise<void> {
+  await ensureOutreachSchema();
+  await sql`delete from outreach_drafts where prospect_id = ${prospectId}`;
+}
+
+export async function listDraftSummaries(): Promise<Pick<SavedDraft, 'prospect_id' | 'subject' | 'source' | 'outlook_saved_at' | 'updated_at'>[]> {
+  await ensureOutreachSchema();
+  const rows = await sql`select prospect_id, subject, source, outlook_saved_at, updated_at from outreach_drafts`;
+  return rows as never;
+}

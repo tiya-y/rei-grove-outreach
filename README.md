@@ -33,8 +33,13 @@ so it stays accurate to REI Grove's current brand, tiers, and voice.
   research notes, you review and edit before saving. Every new prospect (manual, n8n, or discovered) is
   checked against the competitor blocklist from partnership-prospector (extend the list in
   Settings without a redeploy). Once scored and qualified, **approve** a prospect to move it into Outreach.
-- **Outreach** — the initial email to a creator/affiliate prospect uses the team's fixed affiliate-offer
-  template (compensation terms and links never drift); every other case (partner-type prospects, and any
+- **Outreach** — check off the people you want to email and click **Generate initial emails**. Each email is saved
+  as that person's draft (open a row to review or edit it), and **Save to Outlook drafts** puts the checked ones in
+  your own Drafts folder. The initial email to a creator/affiliate prospect is written from the **example emails**
+  you add at the top of the tab (paste text or upload .txt/.md/.eml), matching their voice; with no examples it
+  uses the team's fixed affiliate-offer template. Either way the compensation terms and links never drift: they
+  are fixed facts, and every generated email is checked in code (terms present, only known links, no em dashes)
+  and retried or rejected if it fails. Every other case (partner-type prospects, and any
   follow-up you choose to generate) is drafted by Claude in REI Grove's voice, personalized to that
   prospect, with hard style rules against em dashes and AI-sounding filler. You review it, **copy it to
   your clipboard** (or, if Outlook is connected in Settings, **save it to your own Outlook Drafts**), send it yourself from your own email, and click **Mark as sent** to log it and advance
@@ -62,6 +67,8 @@ Browser
         ├── /api/prospects/[id]/qualify -> Serper + Apollo company data + Claude (three-round qualification)
         ├── /api/prospects/[id]/enrich -> Apollo (email reveal, only after all three rounds pass)
         ├── /api/outreach/draft    -> Anthropic Claude (or the fixed template for creator/affiliate step 1)
+        ├── /api/outreach/generate -> Anthropic Claude (initial email for one checked prospect, saved as their draft)
+        ├── /api/outreach/examples -> Neon Postgres (example emails the generator is based on)
         ├── /api/outreach/send     -> Neon Postgres (records a send, advances the pipeline — no email is sent)
         ├── /api/outreach/outlook-draft -> Microsoft Graph (saves a draft to the signed-in person's own Outlook Drafts; never sends)
         ├── /api/auth/microsoft*   -> Microsoft sign-in per person (tokens stored encrypted in outlook_connections)
